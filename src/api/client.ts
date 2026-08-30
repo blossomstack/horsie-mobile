@@ -15,6 +15,7 @@ import type {
   InboxReplyRequest,
   ListSessionsResponse,
   MarketplaceView,
+  McpServerList,
   MemorySpaceView,
   MemoryView,
   MessagesPage,
@@ -219,6 +220,12 @@ export const api = {
     bundles: (): Promise<PluginView[]> => scoped("/plugins"),
     marketplaces: (): Promise<MarketplaceView[]> => scoped("/marketplaces"),
     authored: (): Promise<AuthoredPluginView[]> => scoped("/authored-plugins"),
+  },
+
+  mcp: {
+    /** The configured remote MCP servers, redacted — a stored token is
+     * reported as `hasToken`, never returned. */
+    list: (): Promise<McpServerList> => scoped("/mcp/servers"),
   },
 
   memory: {

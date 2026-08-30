@@ -7,6 +7,7 @@ import {
   FolderTree,
   LogOut,
   Package,
+  Plug,
   Server,
   Sparkles,
 } from "lucide-react-native";
@@ -32,6 +33,7 @@ export default function SettingsScreen() {
     { href: "/settings/runtimes", label: "Runtimes", icon: Cpu },
     { href: "/settings/skills", label: "Skills", icon: Package },
     { href: "/settings/memory", label: "Memory", icon: Brain },
+    { href: "/settings/mcp", label: "MCP servers", icon: Plug },
   ] as const;
 
   return (
