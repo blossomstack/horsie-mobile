@@ -39,6 +39,15 @@ npm run check:schemas    # both, then fail on any diff — this runs in CI
 
 To move to a newer horsie, change the SHA in `schemas/HORSIE_REF` and run the first two.
 
+## Shipping
+
+Builds run on EAS, from `eas.json`. Two things have to be done by a human once, because both need an Expo or Apple login that CI cannot produce:
+
+1. `eas init` — writes the real project id into `app.json` (`extra.eas.projectId`), which is a placeholder until then.
+2. Add `EXPO_TOKEN` to the repo's Actions secrets, and put the App Store Connect app id into `eas.json` under `submit.production.ios.ascAppId`.
+
+After that, `Build` runs from the Actions tab against the `preview` or `production` profile, and any `v*` tag builds production automatically.
+
 ## Licence
 
 Apache-2.0 OR MIT, at your option. See [LICENSE-APACHE](LICENSE-APACHE) and [LICENSE-MIT](LICENSE-MIT).

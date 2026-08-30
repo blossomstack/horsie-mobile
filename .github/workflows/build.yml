@@ -1,0 +1,49 @@
+name: Build
+
+# Manual, and on a tag. Not on every push: an EAS build costs a queue slot and
+# real minutes, and nothing about a pull request needs a signed binary.
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Which eas.json build profile to run
+        type: choice
+        options: [preview, production]
+        default: preview
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Without the token every step below still runs and the build silently
+    # never starts, so the job says so and stops instead.
+    if: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Require an Expo token
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "EXPO_TOKEN is not set — add it in repo settings before building." >&2
+            exit 1
+          fi
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - run: npm ci
+
+      - name: Build
+        run: |
+          profile="${{ inputs.profile }}"
+          # A tag is always a production build; the input only applies to a
+          # manual run, where it is absent.
+          if [ "${{ github.ref_type }}" = "tag" ]; then profile=production; fi
+          eas build --non-interactive --no-wait --platform all --profile "$profile"

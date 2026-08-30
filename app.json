@@ -39,6 +39,15 @@
       "reactCompiler": true
     },
     "description": "Inbox, sessions and transcripts for a horsie server.",
-    "primaryColor": "#208AEF"
+    "primaryColor": "#208AEF",
+    "owner": "blossomstack",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+      }
+    }
   }
 }
