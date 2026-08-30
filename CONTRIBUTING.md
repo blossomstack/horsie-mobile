@@ -35,4 +35,6 @@ To move to a newer horsie: change the SHA in `schemas/HORSIE_REF`, then `npm run
 
 ## Licence and the CLA
 
-Contributions are dual-licensed Apache-2.0 OR MIT. A CLA check runs on pull requests; sign it once and it covers every blossomstack repo.
+Contributions are dual-licensed Apache-2.0 OR MIT.
+
+A CLA check runs on every pull request. Comment `I have read the CLA Document and I hereby sign the CLA` once and the bot records your signature on the `cla-signatures` branch — a reviewable commit rather than a row in a service nobody here administers. The document itself lives in [blossomstack/.github](https://github.com/blossomstack/.github/blob/main/CLA.md).
