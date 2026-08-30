@@ -51,4 +51,4 @@ which names a header rather than a toolchain, so it reads like an Expo bug and i
 
 Contributions are dual-licensed Apache-2.0 OR MIT.
 
-A CLA check runs on every pull request. Comment `I have read the CLA Document and I hereby sign the CLA` once and the bot records your signature on the `cla-signatures` branch — a reviewable commit rather than a row in a service nobody here administers. The document itself lives in [blossomstack/.github](https://github.com/blossomstack/.github/blob/main/CLA.md).
+A `license/cla` check runs on every pull request. It comes from the CLA Assistant app installed across the whole `blossomstack` org, not from anything in this repo — sign once and it covers every repo there. The document itself lives in [blossomstack/.github](https://github.com/blossomstack/.github/blob/main/CLA.md).
