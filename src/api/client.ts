@@ -163,6 +163,13 @@ export const api = {
       scoped(`/sessions/${encodeURIComponent(id)}/workflow`),
   },
 
+  artifacts: {
+    /** Where an artifact's bytes are. A URL rather than a fetch: an image is
+     * loaded by the image component, which needs the address and the same
+     * bearer header every other request carries. */
+    url: (id: string): string => scopedUrl(`/artifacts/${encodeURIComponent(id)}`),
+  },
+
   inbox: {
     /** A page of the inbox, newest first, with the counts a badge needs. */
     list: (state: InboxScope = "all"): Promise<InboxListResponse> =>

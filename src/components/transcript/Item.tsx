@@ -7,6 +7,7 @@ import type { TranscriptItem } from "@/core/transcript";
 import { hookLine } from "@/core/hookText";
 import { radii, space, useColors } from "@/theme";
 import { Markdown } from "./Markdown";
+import { Artifacts } from "./Artifacts";
 import { ToolCall } from "./ToolCall";
 
 export function TranscriptRow({ item }: { item: TranscriptItem }) {
@@ -99,6 +100,8 @@ function MessageRow({ value }: { value: Extract<TranscriptItem, { kind: "message
           <Markdown>{value.text}</Markdown>
         )
       ) : null}
+
+      <Artifacts items={value.artifacts} />
 
       {value.toolCalls.map((call) => (
         <ToolCall key={call.id} call={call} startedAtMs={value.startedAtMs} />
