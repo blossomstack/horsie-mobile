@@ -48,9 +48,7 @@ const post = (body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
-/** The path segment naming a session's primary agent, as opposed to a
- * subagent's uuid. Mirrors the server's own spelling. */
-export const MAIN_AGENT = "main";
+export { MAIN_AGENT } from "@/core/ids";
 
 /** Which slice of the inbox to read, spelled as the server's `state` parameter
  * spells it. An unknown value is refused there rather than widened to
