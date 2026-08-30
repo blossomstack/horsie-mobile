@@ -103,3 +103,14 @@ export function useSessionFeed() {
     };
   }, [client, project, signedIn]);
 }
+
+/** One agent's current values: task list, usage, and — for a subagent — its
+ * spawn metadata and terminal result. */
+export function useAgent(sessionId: string | undefined, agentId: string) {
+  const { project } = useConnection();
+  return useQuery({
+    queryKey: ["agent", project, sessionId, agentId],
+    queryFn: () => api.sessions.agent(sessionId as string, agentId),
+    enabled: project !== null && sessionId !== undefined,
+  });
+}
