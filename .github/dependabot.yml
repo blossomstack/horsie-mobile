@@ -8,6 +8,11 @@ updates:
     groups:
       expo:
         patterns: ["expo", "expo-*", "@expo/*", "react-native", "react-native-*"]
+      # react and react-dom are peers of each other: react-dom@X wants
+      # react@^X, so bumping one alone leaves the lockfile unresolvable and
+      # `npm ci` fails on the runner. They have to move together.
+      react:
+        patterns: ["react", "react-dom", "@types/react"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
