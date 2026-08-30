@@ -26,12 +26,16 @@ export function ReadOnlyList<T>({
   renderRow,
   empty,
   footer,
+  onOpen,
 }: {
   query: Query<T>;
   keyOf: (item: T) => string;
   renderRow: (item: T) => ReactNode;
   empty: { title: string; detail?: string };
   footer?: string;
+  /** Opening a row. Omitted where there is nothing behind it — a tap that
+   * goes nowhere is worse than a row that plainly does not respond. */
+  onOpen?: (item: T) => void;
 }) {
   if (query.isLoading) return <Loading />;
   if (query.isError) {
@@ -52,7 +56,9 @@ export function ReadOnlyList<T>({
       ListEmptyComponent={<Empty title={empty.title} detail={empty.detail} />}
       renderItem={({ item, index }) => (
         <Card style={{ marginTop: index === 0 ? 0 : space.sm }}>
-          <Row first>{renderRow(item)}</Row>
+          <Row first onPress={onOpen ? () => onOpen(item) : undefined}>
+            {renderRow(item)}
+          </Row>
         </Card>
       )}
       ListFooterComponent={
