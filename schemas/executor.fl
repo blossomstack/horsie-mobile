@@ -1,0 +1,63 @@
+/// Shared runtime-provisioning types.
+///
+/// What remains here is the vocabulary a runtime provider needs — workspaces,
+/// env, provision steps, lifecycle state. The executor ↔ server command/event
+/// protocol this package used to define was replaced by `runtime_vendor.fl`
+/// and is gone.
+package executor;
+
+/// One named workspace root passed to a runtime.
+struct WorkspaceConfig { name: String, path: String }
+
+/// One environment variable explicitly injected into a spawned runtime child
+/// (e.g. a capability token or a synthetic `HOME`).
+struct EnvVar { name: String, value: String }
+
+/// One key/value parameter of a provision step.
+struct StepParam { key: String, value: String }
+
+/// A setup step the runtime executes inside its sandbox after credential
+/// provisioning and before the agent message loop (e.g. cloning a repository).
+/// `uses` selects the step kind — "git_checkout" is the only kind today; the
+/// runtime fails on unknown kinds (fail-closed, forward-compatible).
+struct ProvisionStep {
+    /// Display label, e.g. "checkout horsie".
+    name: String,
+    /// Step kind: "git_checkout".
+    uses: String,
+    /// Open key/value params, interpreted per `uses`.
+    with: Vec<StepParam>,
+}
+
+/// Runtime configuration
+struct RuntimeConfig {
+    workspaces: Vec<WorkspaceConfig>,
+    /// Directories prepended to PATH when running plugin hooks (e.g. the node bin
+    /// dir), resolved by the CLI. Empty inherits the ambient PATH.
+    hook_path: Vec<String>,
+    /// Environment variables explicitly injected into the runtime child by the
+    /// daemon (job-scoped values like capability tokens or a synthetic `HOME`).
+    /// Applied after the sandbox env scrub, so injection wins over the ambient
+    /// allowlist on conflict. Empty injects nothing.
+    env: Vec<EnvVar>,
+    /// Where the runtime mirrors its per-agent cwd/env map, so a respawn
+    /// resumes with it intact. Set only by a vendor that can respawn a runtime;
+    /// absent keeps that state in memory for the life of the process.
+    state_file: Option<String>,
+}
+
+/// Current lifecycle state of a runtime
+enum RuntimeState {
+    Creating,
+    Running,
+    Stopping,
+    Stopped,
+    Failed,
+}
+
+/// Runtime summary returned by QueryRuntimes
+struct RuntimeInfo {
+    runtime_id: String,
+    state: RuntimeState,
+    restart_count: u32,
+}

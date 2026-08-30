@@ -1,0 +1,163 @@
+/// Named agent presets: a saved agent configuration (model, skills, MCP
+/// servers, memory spaces, thinking effort) that is invoked with a message to
+/// create a session.
+///
+/// A preset says nothing about where the work happens. Which machine runs it,
+/// and what it runs against, are properties of the invocation, not of the saved
+/// configuration: a pinned runtime is invisible once it disconnects but fatal
+/// at invoke, and a hardcoded checkout can only ever be run one way. The
+/// invocation supplies both, as one `EnvironmentSpec`.
+package agents;
+
+use environments.EnvironmentSpec;
+use session.SessionSummary;
+
+/// An agent preset as shown to clients.
+struct AgentView {
+    /// Slug; the id of record, used in API paths and CLI invocations.
+    name: String,
+    /// What this preset is for, as shown in the roster. Never sent to the
+    /// model — `instructions` is what the model reads.
+    description: String,
+    /// Standing instructions this preset's agent runs under, added to the
+    /// system prompt as its own section. Absent → the agent behaves exactly
+    /// like an unpresetted one.
+    instructions: Option<String>,
+    /// Configured model alias.
+    model: String,
+    /// Selected plugin-bundle (skill) names.
+    plugins: Vec<String>,
+    /// Enabled MCP server names.
+    mcp_servers: Vec<String>,
+    /// Memory spaces the session may read and write.
+    memory_spaces: Vec<String>,
+    /// Canonical thinking effort; absent → the model's configured default.
+    thinking_effort: Option<String>,
+    /// Whether sessions from this preset compact automatically once their
+    /// context fills; absent → yes.
+    auto_compact: Option<bool>,
+    /// The tools sessions from this preset may call, by name. Absent → the
+    /// default set (every built-in group except the control plane), which is
+    /// what lets a preset saved today follow a later horsie's idea of sensible
+    /// rather than freezing this one's list.
+    ///
+    /// Only built-in tools are governed. Skills, MCP servers and memory spaces
+    /// are chosen by their own fields, so a narrowed selection never silently
+    /// removes what one of those turned on.
+    allowed_tools: Option<Vec<String>>,
+    /// Whether this preset opts in to being tuned from its own past runs: a
+    /// scheduled agent may read what sessions on this preset did, work out what
+    /// would make it better, and write the preset back.
+    ///
+    /// Absent → no. The opposite default to `auto_compact`, and deliberately:
+    /// compaction not happening costs a session its context, while tuning
+    /// happening unasked lets one agent rewrite another's instructions. Opting
+    /// in has to be an act.
+    tunable: Option<bool>,
+    /// Which version of this preset this is. Pass it back as
+    /// `expected_revision` on a write and the write is refused if anything
+    /// changed in between. Absent on a preset that predates versioning and has
+    /// not been written since.
+    revision: Option<u64>,
+    /// Unix epoch seconds.
+    created_at: String,
+    updated_at: String,
+}
+
+/// Create or fully replace an agent preset. Omitted list fields default to
+/// empty; `description` defaults to "".
+///
+/// Named `AgentPresetInput`, not `AgentInput`: fluorite resolves imported types
+/// by bare name across packages, so a second `AgentInput` would hijack
+/// `events`' reference to the agent-loop `agent.AgentInput`.
+struct AgentPresetInput {
+    name: String,
+    description: Option<String>,
+    instructions: Option<String>,
+    model: String,
+    plugins: Option<Vec<String>>,
+    mcp_servers: Option<Vec<String>>,
+    memory_spaces: Option<Vec<String>>,
+    thinking_effort: Option<String>,
+    /// Seeds `AgentSettings.auto_compact` for sessions created from this
+    /// preset; absent → yes.
+    auto_compact: Option<bool>,
+    /// Seeds `AgentSettings.allowed_tools`; absent → the default set.
+    ///
+    /// Naming a `horsie_*` tool here is the whole authorisation for the control
+    /// plane — a session from this preset can then change or delete anything
+    /// this account owns, without confirming first. That is why the default set
+    /// excludes them: authority is granted by asking for it, never by omission.
+    allowed_tools: Option<Vec<String>>,
+    /// Let a tuning agent rewrite this preset from its own runs; absent → no.
+    tunable: Option<bool>,
+    /// Refuse this write unless the preset is still at this revision.
+    ///
+    /// Absent writes unconditionally. Supply it whenever you read, decide, and
+    /// write back: a full replace between a read and a write silently reverts
+    /// whatever someone else changed in between, and there is no merge that
+    /// would be right — the two writers disagree about what the preset should
+    /// say, not about how to combine two halves of it.
+    expected_revision: Option<u64>,
+}
+
+/// One past version of a preset or a memory.
+struct RevisionView {
+    revision: u64,
+    /// The entity's whole wire shape at this revision, as JSON.
+    payload: String,
+    /// This revision recorded a deletion; `payload` is what was deleted.
+    deleted: bool,
+    /// Unix epoch seconds.
+    created_at: String,
+}
+
+/// A thing's past versions, newest first.
+struct RevisionsPage {
+    revisions: Vec<RevisionView>,
+}
+
+/// Invoke a preset: create a session from it and queue a first message.
+struct AgentInvokeRequest {
+    /// First user message; queued immediately after the session is created.
+    message: String,
+    /// Where this invocation runs and what it runs against. Required.
+    environment: EnvironmentSpec,
+    /// Optional session title.
+    name: Option<String>,
+}
+
+struct AgentInvokeResponse {
+    session: SessionSummary,
+}
+
+/// One agent run, as the index holds it: where to find it, and enough to
+/// triage it by.
+///
+/// An address plus an outcome, deliberately. Everything else about a run —
+/// what it was asked, what it did, what it cost — is on `sessions.get` and
+/// `sessions.read` once you hold these two ids, and answering it here would
+/// make a listing of a hundred runs cost what reading one does.
+struct AgentRunView {
+    /// The session hosting this agent. Pass it to `sessions.get` or
+    /// `sessions.read`.
+    session_id: String,
+    /// "main", or the agent's uuid. The `aid` that `sessions.read` takes.
+    agent_id: String,
+    /// The saved preset this agent ran under; absent when its settings were
+    /// supplied inline.
+    preset: Option<String>,
+    /// "provisioning" | "running" | "idle" | "awaiting_input" | "completed" |
+    /// "failed" | "cancelled". The roster's vocabulary.
+    status: String,
+    /// Unix epoch ms. Zero for a session's main agent, which nothing spawned.
+    started_at_ms: u64,
+    /// Unix epoch ms, absent while the run is still going — and absent for
+    /// good on a main agent, which is a session and never ends.
+    ended_at_ms: Option<u64>,
+}
+
+/// Matching agent runs, newest first.
+struct AgentRunsPage {
+    runs: Vec<AgentRunView>,
+}

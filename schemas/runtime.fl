@@ -1,0 +1,475 @@
+/// Protocol types for executor ↔ runtime communication
+package runtime;
+
+use executor.ProvisionStep;
+use hooks.HookRecord;
+
+// --- Tool inputs ---
+
+// Paths are absolute, or relative to the caller's working directory — its
+// `set_working_dir` override if it has one, else the first workspace. There is
+// no workspace argument: an absolute path is how a call reaches another
+// workspace or the shared plugin library.
+struct BashInput { command: String, timeout_secs: Option<u64> }
+struct ReadFileInput { path: String, start_line: Option<u64>, end_line: Option<u64> }
+struct WriteFileInput { path: String, content: String }
+
+// Content-based find/replace. `regex` (default false) switches `find` from a
+// literal string to a pattern; `replace_all` (default false) requires the match
+// to be unique and errors otherwise — set it true to change every occurrence.
+struct FindAndReplaceInput { path: String, find: String, replace: String, regex: Option<bool>, replace_all: Option<bool> }
+
+// Positional replacement: swap the 1-based, inclusive line range for `replacement`.
+struct ReplaceLinesInput { path: String, start_line: u64, end_line: u64, replacement: String }
+
+struct ListFilesInput { path: String }
+struct GlobInput { pattern: String, path: Option<String>, max_results: Option<u64> }
+struct GrepInput { pattern: String, path: Option<String>, file_pattern: Option<String>, max_results: Option<u64> }
+
+// Set the caller's working directory for all future tool calls. `path` may be
+// absolute or relative to the current effective cwd; omit it to reset to the
+// default working directory (the first workspace).
+struct SetWorkingDirInput { path: Option<String> }
+
+// Set (`value` present) or unset (`value` absent) an env var for the caller's
+// future bash commands. Keyed by ToolCallRequest.agent_id like the cwd
+// override, so agents sharing one runtime stay isolated.
+struct SetEnvInput { name: String, value: Option<String> }
+
+/// One variant per tool. The tag doubles as the tool name seen by the LLM.
+#[type_tag = "tool"]
+union ToolCall {
+    Bash(BashInput),
+    ReadFile(ReadFileInput),
+    WriteFile(WriteFileInput),
+    FindAndReplace(FindAndReplaceInput),
+    ReplaceLines(ReplaceLinesInput),
+    ListFiles(ListFilesInput),
+    Glob(GlobInput),
+    Grep(GrepInput),
+    SetWorkingDir(SetWorkingDirInput),
+    SetEnv(SetEnvInput),
+}
+
+// --- Workspace scan ---
+
+// Parameterized so the runtime stays convention-agnostic: the client supplies the
+// instruction filenames to try (in order) and the skills glob. Raw contents come
+// back; the client parses frontmatter.
+struct ScanRequest {
+    call_id: String,
+    /// Whose plugin tree to read, and the same id `ToolCallRequest` carries.
+    /// Required: a scan without one could only read a tree shared by every
+    /// agent, which is the thing per-agent provisioning exists to end.
+    ///
+    /// `include_shared` used to sit here as an opt-in. It is gone: an agent that
+    /// loads no plugins is provisioned with an empty bundle set, so its tree is
+    /// empty and there is nothing to gate. One fact, said once.
+    agent_id: String,
+    workspace: Option<String>,
+    instruction_candidates: Vec<String>,
+    skills_glob: String,
+}
+
+struct ScannedFile { path: String, content: String }
+struct WorkspaceScan {
+    name: String,
+    path: String,
+    is_git_repo: bool,
+    instructions: Option<ScannedFile>,
+    skills: Vec<ScannedFile>,
+    /// Runtime OS/arch (`<os>-<arch>`, e.g. "macos-aarch64"); optional so an
+    /// older runtime binary still deserializes against a newer server.
+    platform: Option<String>,
+}
+
+/// A skill discovered in the shared plugin library. `rel_dir` is the skill's
+/// directory relative to the plugins root, which arrives as
+/// `ScanResponse.shared_root`; joining the two gives the absolute directory the
+/// agent needs to read sibling resources with the filesystem tools.
+struct PluginSkill {
+    plugin: String,
+    rel_dir: String,
+    content: String,
+}
+
+/// An agent definition discovered in the shared plugin library: one `*.md` with
+/// frontmatter naming it, and a body that is its system prompt. `rel_path` is
+/// relative to the plugins root, so it identifies the file without depending on
+/// where the library happens to be mounted.
+///
+/// The bytes travel and the *server* parses them, exactly as skills do: the
+/// runtime is the only process that can see plugin files, and reading
+/// frontmatter is not file access.
+struct PluginAgent {
+    plugin: String,
+    rel_path: String,
+    content: String,
+}
+struct ScanResponse {
+    call_id: String,
+    workspaces: Vec<WorkspaceScan>,
+    shared_skills: Vec<PluginSkill>,
+    /// Agent definitions from the same library. Optional so an older runtime
+    /// binary still deserializes against a newer server.
+    shared_agents: Option<Vec<PluginAgent>>,
+    /// Absolute root of the calling agent's plugin tree. Optional so an older
+    /// runtime binary still deserializes against a newer server; a current one
+    /// always reports it, because the agent was provisioned before it scanned.
+    shared_root: Option<String>,
+}
+
+// --- Plugin MCP servers ---
+
+/// One tool a plugin-declared MCP server offers. `name` is already namespaced
+/// `mcp__<server>__<tool>`, the spelling admin-configured servers use — so
+/// `allowed_tools` and hook matchers see one vocabulary whichever path a tool
+/// came from.
+struct PluginMcpTool {
+    name: String,
+    description: Option<String>,
+    /// JSON Schema, verbatim from the server.
+    input_schema: String,
+}
+
+/// Connect to every MCP server the loaded plugins declare and list their tools.
+///
+/// One request rather than one per server: a session wants the whole tool list
+/// or none of it, and a server that cannot start contributes nothing rather than
+/// failing the scan.
+/// `agent_id` names whose bundles declare the servers. Two agents with different
+/// bundles declare different servers, so the runtime's registry is per agent
+/// rather than per connection.
+struct McpDiscoverRequest  { call_id: String, agent_id: String }
+struct McpDiscoverResponse {
+    call_id: String,
+    tools: Vec<PluginMcpTool>,
+    /// Servers that contributed no tools. Reported rather than dropped, so a
+    /// broken declaration is visible without being fatal.
+    failures: Vec<McpServerFailure>,
+}
+
+/// It could not be reached at all: no such binary, a refused connection, a
+/// declaration that would not parse.
+struct McpServerUnreachable { server: String, reason: String }
+
+/// It answered `401`. `resource_metadata` is the RFC 9728 URL its
+/// `WWW-Authenticate` named, when it named one.
+struct McpServerNeedsAuth { server: String, resource_metadata: Option<String> }
+
+/// Why a declared server contributed no tools this pass. Typed rather than a
+/// string because the two cases call for different answers: one is a broken
+/// plugin to report, the other is a consent flow to offer.
+#[type_tag = "failure"]
+union McpServerFailure {
+    Unreachable(McpServerUnreachable),
+    NeedsAuth(McpServerNeedsAuth),
+}
+
+/// Call one tool on a plugin-declared MCP server. `tool` is the namespaced name
+/// from discovery; the runtime splits it back into server and tool.
+/// `agent_id` names whose tree hosts the server. The same id the discovery that
+/// produced this tool name carried — a tool discovered in one agent's bundles
+/// cannot be invoked against another's.
+struct McpInvokeRequest  { call_id: String, agent_id: String, tool: String, arguments: String }
+struct McpInvokeResponse { call_id: String, result: ToolResult }
+
+// --- Server-initiated hooks ---
+
+/// How the session that is starting came to start.
+///
+/// The spec's whole vocabulary, not the subset horsie produces. `Clear`,
+/// `Compact` and `Fork` have no call site — horsie has no fork and no clear,
+/// and although it does compact, it deliberately does not re-fire
+/// `SessionStart` afterwards: `PostCompact` already covers reacting to one, and
+/// re-running every session-start hook for something that is not a session
+/// start would be a second, worse way to say the same thing. They are arms
+/// nothing constructs rather than values that silently never appear, which is
+/// the same honesty `is_wired()` gives an event horsie cannot fire. A matcher
+/// on one of them selects nothing.
+#[type_tag = "source"]
+union SessionStartSource {
+    Startup,
+    Resume,
+    Clear,
+    Compact,
+    Fork,
+}
+
+struct SessionStartInput { source: SessionStartSource }
+/// A subagent starting. `agent_id` names *which* subagent; `agent_type` is the
+/// matcher domain, the way `source` is for `SessionStart`. Both, because until
+/// #105's Phase 2 gives horsie an agent-type concept every subagent reports the
+/// same type, and the id is then the only thing telling two apart.
+struct SubagentStartInput { agent_id: String, agent_type: String }
+struct UserPromptSubmitInput { prompt: String }
+/// An invocation about to be expanded. `command` is the matcher domain — the
+/// name, so a hook can guard `/deploy` rather than every prompt — and `kind`
+/// says which of `command`, `skill` or `agent` it named.
+struct UserPromptExpansionInput { prompt: String, command: String, kind: String }
+/// `stop_hook_active` is true when horsie is only still running because a
+/// previous `Stop` hook blocked. A cooperative hook returns early rather than
+/// looping; the server's hard cap exists for the hooks that do not.
+struct StopInput { last_assistant_message: Option<String>, stop_hook_active: bool }
+/// A subagent's turn ending. Carries the same pair `SubagentStart` does, so a
+/// hook can join its own start to its own stop.
+struct SubagentStopInput {
+    agent_id: String,
+    agent_type: String,
+    last_assistant_message: Option<String>,
+    stop_hook_active: bool,
+}
+
+/// A compaction about to happen. `trigger` is the matcher domain — `auto` or
+/// `manual` — so a hook can guard the automatic case without also firing on
+/// every `/compact` someone types. `instructions` is what `/compact` was given.
+///
+/// Fired before any history is rewritten, which is what makes it the last
+/// chance to write something down that the summary would otherwise be the only
+/// record of. A hook that blocks abandons the compaction.
+struct PreCompactInput { trigger: String, instructions: Option<String> }
+
+/// A compaction that happened. Same matcher domain as `PreCompact`; the token
+/// counts are what it bought.
+struct PostCompactInput { trigger: String, tokens_before: u32, tokens_after: u32 }
+
+/// An event the server initiates, carrying that event's input.
+///
+/// Tool events are absent by construction: they run inline in the runtime with
+/// the call they guard, so asking for one out of band is unrepresentable rather
+/// than merely wrong. Only wired events have arms — promoting one of the ten
+/// described-but-unwired events adds its arm here alongside its call site.
+#[type_tag = "event"]
+union ServerHookEvent {
+    SessionStart(SessionStartInput),
+    SubagentStart(SubagentStartInput),
+    UserPromptSubmit(UserPromptSubmitInput),
+    UserPromptExpansion(UserPromptExpansionInput),
+    Stop(StopInput),
+    SubagentStop(SubagentStopInput),
+    PreCompact(PreCompactInput),
+    PostCompact(PostCompactInput),
+}
+
+/// Run every matching hook for one server-initiated event inside the sandbox.
+///
+/// `agent_id` names whose plugin tree the hooks come from. A hook is a file in a
+/// bundle, so an agent that selected different bundles has different hooks — and
+/// an agent that selected none has none, rather than inheriting its siblings'.
+struct RunHooksRequest  { call_id: String, agent_id: String, event: ServerHookEvent }
+/// Every hook that ran, in execution order. Injected context is derived from
+/// these rather than carried beside them, so no event is recorded specially.
+struct RunHooksResponse { call_id: String, records: Vec<HookRecord> }
+
+// --- Inbound (executor → runtime) ---
+
+// agent_id keys the runtime's per-agent cwd/env state — one bucket per calling
+// agent, so an agent and its subagents, or sessions sharing a runtime, cannot
+// see each other's cwd or env.
+//
+// Required rather than optional: an unkeyed call would silently share mutable
+// state with every other unkeyed caller, which is the exact failure this field
+// exists to prevent. Today it is the session id, which is also the main agent's
+// journal id (`agent/<session-uuid>`); a subagent stamps its own.
+struct ToolCallRequest  { call_id: String, agent_id: String, call: ToolCall }
+struct CancelCallRequest { call_id: String }
+
+/// Bring this runtime's workspaces to the state `steps` describes.
+///
+/// A request rather than a boot phase. As a phase it had no caller: nothing
+/// could time it, retry it, or run it a second time, and the only way to report
+/// a failure was for the runtime to exit. It is also why `Ready` used to assert
+/// three separate things at once, of which this was the one most likely to have
+/// gone wrong.
+///
+/// Idempotent, which is what lets the server send it on every acquisition
+/// rather than remembering whether it already did. A `git_checkout` over a
+/// directory that already holds that checkout does nothing. The server cannot
+/// know whether a hibernated runtime kept its workspace; the runtime always can.
+struct ProvisionWorkspaceRequest { call_id: String, steps: Vec<ProvisionStep> }
+
+/// The steps that ran, in order. Named rather than counted so a failure says
+/// which step failed and leaves the ones before it known to have applied.
+struct ProvisionOk { applied: Vec<String> }
+struct ProvisionError { reason: String }
+
+/// Fail-whole: a workspace that is only partly built is not a workspace an
+/// agent can be pointed at, and every later failure would be a confusing
+/// consequence of this one.
+#[type_tag = "status"]
+union ProvisionResult { Ok(ProvisionOk), Err(ProvisionError) }
+
+struct ProvisionWorkspaceResponse { call_id: String, result: ProvisionResult }
+
+/// sha256 of a packed bundle. Identity *and* bytes: an external bundle is
+/// content-addressed, so a store entry that exists is finished by construction.
+struct BundleHash { hash: String }
+
+/// An authored bundle's generation, bumped on every save. There is no upstream
+/// whose bytes could differ, and the server can always re-render the package
+/// from its own tables, so a counter is identity enough.
+struct BundleGeneration { generation: u64 }
+
+/// How one revision of a bundle is named.
+#[type_tag = "kind"]
+union BundleVersion {
+    Hash(BundleHash),
+    Generation(BundleGeneration),
+}
+
+/// One plugin bundle: a name to link it under, and the version that is its
+/// identity.
+///
+/// Two agents selecting the same bundle at the same version resolve to one
+/// entry in the runtime's store, so the second costs a symlink rather than a
+/// download.
+///
+/// `digest` is the sha256 of the bytes and is an integrity check, never the
+/// identity. For a `Hash` version it repeats what the identity already says.
+/// For a `Generation` it is the thing that catches a server whose renderer has
+/// drifted from what it recorded — a case that would otherwise leave two
+/// runtimes holding different trees under one name.
+struct BundleRef { name: String, version: BundleVersion, digest: String }
+
+/// Install this agent's bundle set and make it the tree its tool calls, hooks,
+/// scans and MCP servers read.
+///
+/// Per agent, because an agent is the unit that has a plugin set: a workflow
+/// step runs under its own preset, and that preset names its own bundles. The
+/// session used to be the unit, baked into the runtime's environment at create
+/// time, so every agent in a session got whatever the session was created with
+/// and a step could not differ from its siblings at all.
+///
+/// Idempotent, like `ProvisionWorkspace` and for the same reason: the server
+/// sends it on every agent load rather than tracking what it already did. A
+/// bundle already in the store is linked, not refetched, so the common case —
+/// the same agent waking again — costs no I/O.
+///
+/// An agent with no bundles is still provisioned, with an empty set. "Not
+/// provisioned" is then a real state the runtime can refuse work in, rather than
+/// something inferred from a directory that happens not to exist.
+struct ProvisionAgentRequest { call_id: String, agent_id: String, bundles: Vec<BundleRef> }
+
+struct ProvisionAgentResponse {
+    call_id: String,
+    /// Absolute root of this agent's tree. The agent reads its skills' sibling
+    /// files through this, so it has to be a path that means something inside
+    /// the runtime — which only the runtime knows.
+    root: String,
+    result: ProvisionResult,
+}
+
+/// The runtime abandoned this call because the caller asked it to.
+///
+/// Replaces the synthetic `ToolCallResponse` a `CancelCall` used to draw. That
+/// answer was tool-shaped whatever the request was, so cancelling anything else
+/// resolved its waiter with "the runtime answered X with the wrong message" — a
+/// protocol confusion reported in place of the cancellation that actually
+/// happened. Harmless while only tool calls could be cancelled; the moment
+/// every server-initiated command became cancellable it was wrong five ways.
+struct CancelledResponse { call_id: String }
+
+/// The runtime refused this request outright.
+///
+/// A reply any waiter accepts, because several requests have no error shape of
+/// their own: a scan answers with skills, a hook run with records, a discovery
+/// with tools, and none of them can say "no". Without this the only ways to
+/// refuse one were to answer it wrongly — which reads as a protocol confusion —
+/// or to answer it emptily, which is indistinguishable from a legitimate empty
+/// result and is how a sequencing bug becomes a model that has quietly lost its
+/// skills.
+///
+/// Named for what it is rather than for its one caller: refusing a request that
+/// names an unprovisioned agent is the first reason, not the only possible one.
+///
+/// `RequestRefused`, not `RequestFailed`: fluorite resolves imported types by
+/// bare name across packages, and `runtime_vendor` already has a `RequestFailed`.
+/// A second one silently hijacks the union arm to the wrong type rather than
+/// erroring.
+struct RequestRefused { call_id: String, reason: String }
+
+/// Asks the runtime what it is currently executing.
+///
+/// A liveness call, and the only request in this protocol with a bound the
+/// caller may act on: it is answered concurrently, never queued behind a running
+/// tool, so an unanswered one says something a slow tool never could.
+struct PingRequest { call_id: String }
+
+#[type_tag = "type"]
+union RuntimeInboundMessage {
+    ToolCall(ToolCallRequest),
+    CancelCall(CancelCallRequest),
+    ScanWorkspace(ScanRequest),
+    RunHooks(RunHooksRequest),
+    McpDiscover(McpDiscoverRequest),
+    McpInvoke(McpInvokeRequest),
+    Ping(PingRequest),
+    ProvisionWorkspace(ProvisionWorkspaceRequest),
+    ProvisionAgent(ProvisionAgentRequest),
+}
+
+// --- Outbound (runtime → executor) ---
+
+struct ToolOutput {
+    stdout: String,
+    stderr: String,
+    exit_code: i32,
+    /// Bytes the call produced that are not text — an MCP screenshot block.
+    /// Bytes rather than references because the runtime has no database: it
+    /// ships what it got and the server stores it, so what a message ends up
+    /// holding is an `ArtifactRef` and never this.
+    ///
+    /// Defaulted, and that is load-bearing rather than tidy: this type crosses
+    /// a version boundary between a runtime process and the server they connect
+    /// to. A required field here would fail to deserialize for every runtime
+    /// binary built before it existed.
+    #[default = "[]"]
+    artifacts: Vec<Bytes>,
+}
+
+struct ToolError  { reason: String }
+
+#[type_tag = "status"]
+union ToolResult { Ok(ToolOutput), Err(ToolError) }
+
+struct ToolCallResponse {
+    call_id: String,
+    result: ToolResult,
+    /// Every hook that ran for this call, in execution order. Empty for the
+    /// overwhelmingly common case of a session with no matching hooks.
+    hooks: Vec<HookRecord>,
+}
+
+/// First message the runtime sends after connecting, and the only one it sends
+/// unprompted.
+///
+/// Asserts one thing: the process is up, confined, and listening. It used to
+/// assert three — that provisioning had also been attempted and had also
+/// succeeded — which is why a session whose checkout silently failed was
+/// indistinguishable from one that never had a checkout to do.
+struct RuntimeReady { runtime_id: String }
+
+/// Every request this runtime is currently executing, by call id.
+///
+/// The load-bearing part is `in_flight`, not the reply itself: it turns liveness
+/// from a boolean into a reconciliation against the caller's own list, which is
+/// what lets a twenty-minute build be told apart from a request the runtime never
+/// heard of. A boolean answer cannot distinguish them, and any deadline that
+/// tried would have to bound the one thing here with no natural bound.
+struct PongResponse { call_id: String, in_flight: Vec<String> }
+
+/// All messages the runtime sends to the executor.
+#[type_tag = "type"]
+union RuntimeOutboundMessage {
+    Ready(RuntimeReady),
+    ToolCallResponse(ToolCallResponse),
+    ProvisionResult(ProvisionWorkspaceResponse),
+    AgentProvisioned(ProvisionAgentResponse),
+    Cancelled(CancelledResponse),
+    RequestRefused(RequestRefused),
+    ScanResult(ScanResponse),
+    HookRecords(RunHooksResponse),
+    McpTools(McpDiscoverResponse),
+    McpResult(McpInvokeResponse),
+    Pong(PongResponse),
+}

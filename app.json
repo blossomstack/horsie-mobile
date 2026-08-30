@@ -1,14 +1,16 @@
 {
   "expo": {
-    "name": "horsie-mobile",
+    "name": "Horsie",
     "slug": "horsie-mobile",
-    "version": "1.0.0",
+    "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "horsiemobile",
+    "scheme": "horsie",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "dev.horsie.mobile",
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
@@ -17,11 +19,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
-    },
-    "web": {
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "predictiveBackGestureEnabled": false,
+      "package": "dev.horsie.mobile"
     },
     "plugins": [
       "expo-router",
@@ -32,11 +31,14 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "description": "Inbox, sessions and transcripts for a horsie server.",
+    "primaryColor": "#208AEF"
   }
 }
