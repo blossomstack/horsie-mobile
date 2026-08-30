@@ -165,14 +165,21 @@ export async function send<T>(url: string, init?: RequestInit): Promise<T> {
     res = await once(url, init);
     if (res.status === 401 && tokens) {
       const pair = await refreshTokens();
-      if (pair) res = await once(url, init);
+      if (pair) {
+        res = await once(url, init);
+        // A token minted a moment ago and rejected on the very next request
+        // is not an expiry — the credential is genuinely no longer accepted,
+        // so send the person back to the device flow rather than leaving
+        // every screen on a permission error it cannot act on.
+        if (res.status === 401) await signOut();
+      }
+      // `pair === null` is deliberately NOT a sign-out here. `refreshTokens`
+      // already signed out if the server *said no*; a null it returns for a
+      // network failure must leave the credential alone, or a tunnel or a
+      // restarting proxy costs the person their login.
     }
   } catch {
     throw unreachable();
   }
-  // A 401 that survived the retry means the credential is gone for good, not
-  // merely expired — send the person back to the device flow rather than
-  // leaving every screen showing a permission error it cannot act on.
-  if (res.status === 401) await signOut();
   return parse<T>(res);
 }
