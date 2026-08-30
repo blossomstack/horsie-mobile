@@ -18,6 +18,9 @@ function Shell() {
           headerTintColor: colors.legend,
           headerTitleStyle: { color: colors.legend },
           contentStyle: { backgroundColor: colors.chassis },
+          // Without this the back button reads "(tabs)" — the route group's
+          // own name, which means nothing to anyone looking at it.
+          headerBackButtonDisplayMode: "minimal",
         }}
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />

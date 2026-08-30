@@ -20,6 +20,7 @@ import {
   listServers,
   readTokens,
   upsertServer,
+  writeTokens,
   removeServer as forgetServer,
   type ServerRecord,
 } from "@/api/tokens";
@@ -93,6 +94,10 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       connect: async (next, tokens) => {
         reset();
         await upsertServer(next);
+        // Both, and in this order: the record says which server, the tokens
+        // say we are signed in to it. Writing only the record left every
+        // relaunch back at the device flow with a server already listed.
+        await writeTokens(next.id, tokens);
         setServer(next, tokens);
         setServerState(next);
         setSignedIn(true);

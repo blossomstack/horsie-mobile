@@ -1,0 +1,36 @@
+# Contributing
+
+Thanks for looking. This is the mobile client for [horsie](https://github.com/blossomstack/horsie); the server, the web UI and the CLI live there.
+
+## Getting set up
+
+```bash
+npm install
+npm run ios      # or: npm run android
+```
+
+You need a horsie server to point at. `horsie serve` on your laptop is enough — the iOS simulator can reach the host's `127.0.0.1` directly.
+
+## Before you open a pull request
+
+```bash
+npm run typecheck
+npm test
+npm run lint
+```
+
+If you changed anything that reads or writes the API, also run `npm run check:schemas`.
+
+## Protocol types are generated, not written
+
+Everything under `src/generated/` comes from horsie's `.fl` schemas via fluorite, and everything under `schemas/` is a copy of those files at the ref in `schemas/HORSIE_REF`. Neither is edited by hand — CI regenerates both and fails on a diff.
+
+To move to a newer horsie: change the SHA in `schemas/HORSIE_REF`, then `npm run sync-schemas && npm run generate-types`.
+
+## Where logic goes
+
+`src/core/` holds the parts with no React and no React Native in them — the transcript fold, the graph layout, the hook helpers. Most of it is carried over from horsie's web client so the two cannot drift, and it is where the unit tests are. If a change can live there, it should.
+
+## Licence and the CLA
+
+Contributions are dual-licensed Apache-2.0 OR MIT. A CLA check runs on pull requests; sign it once and it covers every blossomstack repo.

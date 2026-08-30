@@ -4,7 +4,7 @@ import { Stack, useLocalSearchParams } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
-import { Body, Card, Empty, Loading, Mono, Pill, ReadError } from "@/components/ui";
+import { Body, Card, Empty, Loading, Mono, Pill } from "@/components/ui";
 import { layoutGraph, type PlacedNode } from "@/core/graphLayout";
 import { useConnection } from "@/state/connection";
 import { radii, space, useColors } from "@/theme";

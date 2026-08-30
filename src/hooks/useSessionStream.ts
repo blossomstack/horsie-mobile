@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer } from "react";
 import { AppState } from "react-native";
 import EventSource from "react-native-sse";
 import { useQueryClient } from "@tanstack/react-query";
@@ -45,11 +45,12 @@ export function useSessionStream(
   const { project } = useConnection();
   const { data: agentDoc } = useAgent(sessionId, agentId);
 
-  const earliestRef = useRef<number | null>(null);
-  earliestRef.current = state.entries[0]?.seq ?? null;
+  // The web client held these in refs so `loadMore` could stay identity-stable.
+  // Plain values here: writing a ref during render is what the React Compiler
+  // lint forbids, and a callback that changes with the log costs nothing —
+  // `onEndReached` is read fresh on every render anyway.
+  const earliest = state.entries[0]?.seq ?? null;
   const canLoadMore = state.hasMoreBefore && !state.loadingMore;
-  const canLoadMoreRef = useRef(canLoadMore);
-  canLoadMoreRef.current = canLoadMore;
 
   useEffect(() => {
     dispatch({ kind: "reset" });
@@ -134,14 +135,13 @@ export function useSessionStream(
   }, [docTasks, docSeq]);
 
   const loadMore = useCallback(() => {
-    const before = earliestRef.current;
-    if (!sessionId || before === null || !canLoadMoreRef.current) return;
+    if (!sessionId || earliest === null || !canLoadMore) return;
     dispatch({ kind: "loading-more", value: true });
     api.sessions
-      .messages(sessionId, agentId, { before, max: PAGE })
+      .messages(sessionId, agentId, { before: earliest, max: PAGE })
       .then((page) => dispatch({ kind: "prepend", page }))
       .catch(() => dispatch({ kind: "loading-more", value: false }));
-  }, [sessionId, agentId]);
+  }, [sessionId, agentId, earliest, canLoadMore]);
 
   const addOptimisticUser = useCallback((text: string) => {
     const id = `optim-${optimisticSeq++}`;

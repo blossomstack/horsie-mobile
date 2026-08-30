@@ -143,7 +143,7 @@ export async function resume(record: ServerRecord): Promise<boolean> {
   return pair !== null;
 }
 
-async function once<T>(url: string, init: RequestInit | undefined): Promise<Response> {
+async function once(url: string, init: RequestInit | undefined): Promise<Response> {
   return fetch(url, {
     ...init,
     headers: {

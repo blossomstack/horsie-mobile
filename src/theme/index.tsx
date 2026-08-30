@@ -8,7 +8,7 @@ import {
 } from "react";
 import { useColorScheme } from "react-native";
 import * as SecureStore from "expo-secure-store";
-import { dark, light, radii, space, text, type Palette, type ThemeChoice } from "./tokens";
+import { dark, light, type Palette, type ThemeChoice } from "./tokens";
 
 export { radii, space, text } from "./tokens";
 export type { Palette, ThemeChoice } from "./tokens";

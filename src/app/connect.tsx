@@ -63,6 +63,10 @@ export default function Connect() {
         if (!live()) return;
         try {
           const tokens = await probe.deviceToken(baseUrl, code.deviceCode);
+          // The approval browser is a modal sheet over the app. Without this it
+          // stays up after the code is approved, hiding the very screen the
+          // approval unlocked — it looks like nothing happened.
+          void WebBrowser.dismissBrowser();
           await connect(record, tokens);
           router.replace("/projects");
           return;

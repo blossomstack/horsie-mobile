@@ -1,14 +1,13 @@
 import { useMemo } from "react";
-import { FlatList, RefreshControl, View } from "react-native";
+import { FlatList, RefreshControl, View , Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { CornerDownRight, Plus } from "lucide-react-native";
-import { SessionStatusKind, type SessionSummary } from "@/api/types";
+import { SessionStatusKind } from "@/api/types";
 import { Body, Card, Empty, Loading, Pill, ReadError, Row } from "@/components/ui";
 import { useSessionFeed, useSessions } from "@/hooks/useSessions";
 import { flattenSessions, type SessionRow } from "@/lib/sessionTree";
 import { relativeTime } from "@/lib/time";
 import { radii, space, useColors } from "@/theme";
-import { Pressable } from "react-native";
 
 export default function SessionsScreen() {
   const router = useRouter();
