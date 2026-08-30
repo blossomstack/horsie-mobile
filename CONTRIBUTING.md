@@ -21,6 +21,8 @@ npm run lint
 
 If you changed anything that reads or writes the API, also run `npm run check:schemas`.
 
+**If you added or removed a dependency, regenerate the lockfile whole** — `rm package-lock.json && npm install` — rather than committing what an incremental `npm install` leaves behind. An incremental install on macOS prunes the optional native packages that only Linux resolves (`@emnapi/*`), and CI's `npm ci` then refuses the lockfile as out of sync. A local `npm ci` will *not* catch this: it resolves for the platform you are on, so it passes on a Mac and fails on the runner.
+
 ## Protocol types are generated, not written
 
 Everything under `src/generated/` comes from horsie's `.fl` schemas via fluorite, and everything under `schemas/` is a copy of those files at the ref in `schemas/HORSIE_REF`. Neither is edited by hand — CI regenerates both and fails on a diff.
