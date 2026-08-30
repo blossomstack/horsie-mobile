@@ -1,0 +1,67 @@
+/// Sandbox capability spec — the policy the runtime applies via nono. Part of the
+/// CLI → runtime contract: the CLI resolves and persists a spec, the runtime loads
+/// and enforces it. Hand-written `load`/`builtin_default` live in models/src/lib.rs.
+package capabilities;
+
+/// Access granted to a path.
+enum Access {
+    Read,
+    ReadWrite,
+}
+
+/// All network access kernel-blocked (the safe default).
+struct BlockNetwork {}
+
+/// Unrestricted network access.
+struct AllowNetwork {}
+
+/// Outbound TCP restricted to `localhost:<port>` only — all other egress is
+/// kernel-blocked. Confines an agent to a local policy proxy. Unix-socket grants
+/// (e.g. the runtime↔executor IPC socket) are a separate capability layer in nono
+/// and remain in effect. `port` is `u32` because the schema language has no `u16`;
+/// the runtime rejects values above 65535 at apply time.
+struct ProxyOnlyNetwork { port: u32 }
+
+/// What network egress the sandbox permits. `Block` is the safe default.
+#[type_tag = "type"]
+union NetworkPolicy {
+    Block(BlockNetwork),
+    Allow(AllowNetwork),
+    ProxyOnly(ProxyOnlyNetwork),
+}
+
+/// A directory-subtree grant (`nono::allow_path`).
+struct DirGrant { path: String, access: Access }
+
+/// A single-file grant, e.g. a device node (`nono::allow_file`).
+struct FileGrant { path: String, access: Access }
+
+/// The runtime working directory, resolved to `--working-dir` at apply time.
+struct WorkingDirGrant { access: Access }
+
+/// The process temp directory, resolved at apply time rather than written as a
+/// path: on macOS `TMPDIR` is a per-user `/var/folders/…/T` that no static spec
+/// can name, and the runtime inherits it through the env allowlist.
+struct TempDirGrant { access: Access }
+
+/// A single capability grant. The kind is explicit so directory-vs-file intent is
+/// unambiguous; `nono`'s `allow_path` is directory-only and `allow_file` single-file.
+#[type_tag = "type"]
+union Grant {
+    Dir(DirGrant),
+    File(FileGrant),
+    WorkingDir(WorkingDirGrant),
+    TempDir(TempDirGrant),
+}
+
+/// A full sandbox capability specification. Either authored as a capability file or
+/// taken from the platform built-in default; fully defines what the sandbox allows.
+struct CapabilitySpec {
+    network: NetworkPolicy,
+    grants: Vec<Grant>,
+    /// Raw platform sandbox rules (macOS Seatbelt S-expressions; ignored on Linux),
+    /// applied verbatim after the structured grants. The CLI prepends platform defaults
+    /// (see `with_default_seatbelt_rules`). `unsafe_` because they bypass the structured
+    /// grant model.
+    unsafe_seatbelt_rules: Option<Vec<String>>,
+}

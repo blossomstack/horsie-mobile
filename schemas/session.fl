@@ -1,0 +1,346 @@
+/// Wire types for the session server: session views and the messages stream.
+package session;
+
+use agent.Message;
+use agent.AgentLogEntry;
+use agent.Usage;
+// `task_list` is the agent's own tool state, so `TaskItem` lives with the agent
+// and is imported back here rather than defined here. Also required by the
+// dependency direction: `agent.fl` carries the log entry that reports a task
+// list, and `agent` cannot import from `session` while `session` imports agent.
+use agent.TaskItem;
+use agent.TaskStatus;
+
+/// User-visible lifecycle state of a session. Failure reasons ride separately
+/// in `last_error` so the enum stays a plain discriminant.
+enum SessionStatusKind {
+    /// The runtime is being built. A session is created in this state and
+    /// leaves it once its vendor confirms the runtime; anything sent
+    /// meanwhile is queued and runs as soon as it does.
+    Provisioning,
+    Idle,
+    Running,
+    AwaitingInput,
+    /// A workflow run completed with no error. Not terminal: a retry or a new
+    /// message moves it back to `Running`.
+    Finished,
+    Failed,
+    Unrecoverable,
+}
+
+/// One key-value annotation on a session. Annotations ride as a vec of
+/// entries (fluorite has no map type); keys are unique per session.
+struct AnnotationEntry {
+    key: String,
+    value: String,
+}
+
+/// Agent settings supplied at session creation.
+struct AgentSettings {
+    model: String,
+    /// The built-in tools this session's agents may call, by name. Absent → the
+    /// default set: every built-in group except the control plane.
+    ///
+    /// An allowlist over built-ins only. Skills, MCP servers and memory spaces
+    /// are selected by their own fields and are never removed by narrowing this
+    /// one — their names are not fixed at build time, so a selection could not
+    /// honestly speak for them.
+    ///
+    /// Naming a `horsie_*` tool is the whole authorisation for the control
+    /// plane: authority over this server is asked for, never inherited from a
+    /// field left unset. Only the main agent gets those tools — subagents,
+    /// sub sessions and workflow steps inherit the selection but not the
+    /// authority, the same rule that keeps session-metadata tools off them.
+    allowed_tools: Option<Vec<String>>,
+    use_plugins: Option<bool>,
+    max_iterations: Option<u32>,
+    max_retries: Option<u32>,
+    /// Names of enabled MCP servers this session may call, namespaced
+    /// `mcp__<name>__<tool>`; absent → none.
+    mcp_servers: Option<Vec<String>>,
+    /// Memory spaces this session may read and write; absent → none, and the
+    /// memory_* tools are not offered.
+    memory_spaces: Option<Vec<String>>,
+    /// Canonical thinking effort for this session, chosen from the model's
+    /// offered list. Absent → the model's configured default.
+    thinking_effort: Option<String>,
+    /// Cap on concurrently-active subagents in this session; absent → the
+    /// server's built-in default (8).
+    max_concurrent_subagents: Option<u32>,
+    /// Standing instructions this session's agent runs under, added to the
+    /// system prompt as its own section. Set from an agent preset, or directly
+    /// here; absent → none.
+    instructions: Option<String>,
+    /// Whether this session summarises older history into a compaction
+    /// boundary once its context fills; absent → yes.
+    ///
+    /// A flag rather than a threshold: the share of the window at which
+    /// compacting is worthwhile is a property of the model, not of the
+    /// session, so it stays a server constant that can be retuned centrally
+    /// instead of a number frozen into everyone's saved settings. Has no
+    /// effect when the model's card declares no context window — there is
+    /// then nothing to be a share of.
+    auto_compact: Option<bool>,
+}
+
+struct SessionSummary {
+    id: String,
+    name: Option<String>,
+    /// What the session last reported. Always known: the registry keeps a
+    /// durable copy, so a cold session answers without being loaded.
+    status: SessionStatusKind,
+    created_at: u64,
+    last_error: Option<String>,
+    /// The workflow this session is a run of. Present only for a run, which is
+    /// what lets the session list annotate one without a second request.
+    /// Routine runs carry nothing here — they are not in the list at all.
+    workflow: Option<String>,
+    /// User-set key-value metadata (e.g. `group=<name>`). Empty when none.
+    annotations: Vec<AnnotationEntry>,
+    /// The sub sessions branched out of this session, so a list can nest them
+    /// under it. Flat and parent-linked rather than already nested, because the
+    /// registry holds it flat — and answered from that registry, so listing
+    /// sessions still loads none of them.
+    sub_sessions: Vec<SubSessionView>,
+}
+
+/// One sub session under a session.
+///
+/// `parent` absent means the session's main agent; present names another sub
+/// session. That is what lets a client nest them to any depth without learning
+/// the server's own vocabulary for where one is rooted.
+struct SubSessionView {
+    id: String,
+    parent: Option<String>,
+    /// What it is called. Always set: a sub session cannot name itself, so
+    /// whoever branched it chose a title at the branch — `spawn_subsession`
+    /// takes one, and `/fork` derives one from the brief.
+    title: String,
+    /// The brief it was branched with — the first thing it reads. Absent on
+    /// the session *list*, which does not read the sessions it lists; present
+    /// on a session's own document.
+    input: Option<String>,
+    /// Its banked numbers. Absent on the session list, for the same reason.
+    stats: Option<AgentStats>,
+    /// The same vocabulary an agent's document speaks: "provisioning" |
+    /// "running" | "idle" | "awaiting_input" | "failed" | "cancelled". A sub
+    /// session is talked to rather than delegated to, so it never reads
+    /// "completed".
+    status: String,
+    created_at_ms: u64,
+    /// When this sub session last did anything: the moment of its most recent
+    /// status change, which is the end of its last turn once it is idle again.
+    ///
+    /// A session has no *end* — nothing closes it — so this is not one.
+    /// It is how far along it got, which is what a reader looking at the
+    /// session's shape actually needs; without it a sub session can only be
+    /// drawn as running forever. Zero before it has moved at all.
+    last_activity_ms: u64,
+}
+
+/// One agent's banked numbers: what it spent, what everything under it spent,
+/// and how full its context is.
+///
+/// Banked rather than live — every figure is folded from an event the session
+/// journaled — which is what lets a whole roster report them without waking a
+/// single agent. `contextTokens` is therefore as of the end of that agent's
+/// last turn, not as of now.
+struct AgentStats {
+    /// Tokens this agent alone has spent.
+    usage: UsageView,
+    /// `usage` plus every agent below it: the subagents it spawned, the sub
+    /// sessions branched from it, the steps of the workflows it invoked, and
+    /// everything below those.
+    subtree_usage: UsageView,
+    /// Tokens its context held at the end of its last turn.
+    context_tokens: u32,
+    /// The window the model it runs allows, when that model is configured.
+    /// Absent when it is not — a number with no denominator is not a gauge.
+    context_window: Option<u32>,
+}
+
+/// Answers to every question one agent is parked on, delivered together
+struct AnswerAsksRequest {
+    answers: Vec<AskAnswerInput>,
+}
+
+struct AskAnswerInput {
+    tool_call_id: String,
+    text: String,
+}
+
+struct SessionDetail {
+    id: String,
+    name: Option<String>,
+    status: SessionStatusKind,
+    created_at: u64,
+    last_error: Option<String>,
+    /// User-set key-value metadata (e.g. `group=<name>`). Empty when none.
+    annotations: Vec<AnnotationEntry>,
+    /// The predefined environment this session was created from; absent when it
+    /// was created from an ad-hoc runtime. `vendor` and `repos` are what it
+    /// resolved to, and stay the answer to what the session actually got.
+    environment: Option<String>,
+    vendor: String,
+    /// Clone URLs of the session's provisioned repos (empty when none).
+    repos: Vec<String>,
+    /// Selected skill-bundle names (empty when none).
+    plugins: Vec<String>,
+    /// Token usage summed across every agent this session hosts. Per-agent
+    /// numbers (and context size, which is never summed) are on the agent
+    /// document instead.
+    usage_total: UsageView,
+    /// Every agent this session hosts, each addressable at
+    /// `/sessions/:id/agents/:agent_id`. A session lists its main agent
+    /// first, then its subagent tree. A workflow run has no main agent — it
+    /// *is* its steps — so it lists one entry per execution in its run log,
+    /// labelled with the step that ran.
+    agents: Vec<SubAgentView>,
+    /// The sub sessions branched out of this session, so one read tells a
+    /// client everything the session hosts.
+    ///
+    /// Its own field rather than more entries in `agents`, because a sub
+    /// session is not a delegated task: it owes nobody a result and it never
+    /// ends, so it has no end stamp for a `SubAgentView` to carry and no honest
+    /// way to share the shape. The server keeps the two apart for the same
+    /// reason — a sub session is deliberately not a `SubAgentTree` node.
+    sub_sessions: Vec<SubSessionView>,
+    /// The workflow this session is a run of, if it is one. Decides which view
+    /// the page renders: a run has a graph rather than a transcript.
+    workflow: Option<String>,
+}
+
+/// One agent this session hosts — enough of it to draw the session's shape and
+/// to answer for any one agent without reading its transcript.
+///
+/// Everything here is folded from the session's own journal, so a roster of
+/// thirty agents costs no agent recoveries. The transcript is the one thing
+/// that is not: it is read per agent, at `/sessions/:id/agents/:id/messages`.
+struct SubAgentView {
+    id: String,
+    /// Parent agent id; absent → rooted on whatever this session's primary
+    /// agent is: its main agent, or the step that spawned it.
+    parent: Option<String>,
+    /// What this agent is called. For the main agent it is the session's name,
+    /// because the main agent *is* the session; for a subagent it is the title
+    /// its spawner gave it; for a workflow step it is the step's name. Absent
+    /// only while nothing has named it — a session whose first turn has not
+    /// produced a title yet.
+    title: Option<String>,
+    /// What kind of agent this is: "main" | "subagent" | "step". A sub session
+    /// is not here — it has its own list, for the reason `subSessions` gives.
+    kind: String,
+    /// What it was asked to do: a subagent's task. Absent for the main agent,
+    /// which is talked to turn by turn rather than briefed once, and for a
+    /// step, whose brief is its definition's.
+    input: Option<String>,
+    /// What it produced, once it has. Only delegated work has one: a
+    /// subagent's report or a step's output. Never the main agent's — a
+    /// session concludes nothing.
+    output: Option<String>,
+    /// Its banked numbers.
+    stats: AgentStats,
+    depth: u32,
+    /// The plugin-declared agent type this subagent runs as, when it was
+    /// spawned with one. Absent for the main agent and for a general-purpose
+    /// subagent.
+    agent_type: Option<String>,
+    /// The saved agent preset this agent's settings came from; absent when they
+    /// were supplied inline. Every kind of agent answers it: a main agent names
+    /// the preset it was invoked from, a workflow step names its own, and a
+    /// subagent or sub session names whichever it inherited.
+    ///
+    /// Here so one read of a session says which of its agents are runs of which
+    /// preset, rather than needing a lookup per agent.
+    preset: Option<String>,
+    /// What became of this agent: "provisioning" | "running" | "idle" |
+    /// "awaiting_input" | "completed" | "failed" | "cancelled". A main agent
+    /// reports its session's state and never *completes*; a subagent or a step
+    /// runs to one of the three endings.
+    status: String,
+    error: Option<String>,
+    /// When this agent was spawned and when it reached its current result.
+    /// Zero when unrecorded — journaled before these were kept, still running,
+    /// or a main agent, which nothing spawned and which is as old as the
+    /// session's own `created_at`.
+    spawned_at_ms: u64,
+    ended_at_ms: u64,
+    /// The workflow run this execution belongs to, for a step; absent for
+    /// every other kind.
+    ///
+    /// A session can host more than one: its own, if it is a run, and one per
+    /// `invoke_workflow` any of its agents called. Without this they arrive as
+    /// one flat list of steps, and a client redrawing the run as the sequence
+    /// it is has no way to tell two runs apart — or to tell an invoked run
+    /// from the session's own.
+    run: Option<String>,
+    /// The workflow that run was started from — its name, for display. On
+    /// every step of the run rather than in a list of its own, so one read of
+    /// a session is still all a picture of it needs.
+    workflow: Option<String>,
+}
+
+// --- The messages stream ---
+
+/// One frame on `GET /sessions/:id/messages`.
+///
+/// Two arms because there are two kinds of thing to carry, and they differ in
+/// exactly one respect that matters: an `Entry` is durable and replayable, a
+/// `Delta` is neither. A tagged union rather than "whichever field is present"
+/// so a client's match is exhaustive and a third arm cannot be added silently.
+#[type_tag = "type"]
+union MessageFrame {
+    Window(MessageWindow),
+    Entry(AgentLogEntry),
+    Delta(MessageDelta),
+}
+
+/// The first frame of a replay, describing the window that follows.
+///
+/// A cursorless connect replays at most a capped number of the newest entries,
+/// so a long-running session does not resend its whole history on every open.
+/// `has_more_before` says whether the cap actually bit — the client cannot
+/// infer it from the first entry's `seq`, because a log front-trimmed for
+/// context management has no seq 0 either, and the two cases want opposite
+/// behaviour. Sent only when there is no cursor: a resuming client already
+/// knows where it is.
+struct MessageWindow {
+    /// Older entries exist before this window; page back with `before=` to get
+    /// them.
+    has_more_before: bool,
+    /// The seq of the oldest entry in this window, which is the cursor to page
+    /// back from. Absent when the window is empty.
+    earliest_seq: Option<u64>,
+}
+
+/// A chunk of the message being written.
+///
+/// Carries the entry it follows, because a chunk means nothing without one.
+/// `delta_seq` restarts at 1 after every entry, which is what makes a stale
+/// position detectable: a client claiming more chunks than this run has emitted
+/// was talking to a run that has since restarted, and `reset` says so.
+struct MessageDelta {
+    entry_seq: u64,
+    delta_seq: u32,
+    text: String,
+    /// Discard the partial text you hold: these chunks start a new run.
+    reset: bool,
+}
+
+// No `ProgressionEvent` here any more. Preparation progress is a `Preparing`
+// entry in the agent's own log — journaled, ordered against everything else
+// that happened, and replayable — so a session document carrying a snapshot of
+// the current stage had no source to fill it from and was always `null`.
+
+/// Cumulative token usage across a session's completed turns. `u64` (not the
+/// per-turn `Usage`'s `u32`) because it sums re-sent context over many turns.
+/// Cache fields are `Option<u64>`, absent only when no completed turn ever
+/// reported cache data — never coerced to a fake zero.
+struct UsageView {
+    input_tokens: u64,
+    output_tokens: u64,
+    cache_creation_tokens: Option<u64>,
+    cache_read_tokens: Option<u64>,
+}
+
+

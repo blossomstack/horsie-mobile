@@ -1,0 +1,114 @@
+/// Wire types for the MCP-server settings API: a redacted view of the
+/// configured remote MCP servers and the inputs that upsert them. Secrets are
+/// never returned — a bearer token surfaces only as a `has_token` flag.
+///
+/// Auth is a tag-`kind` union so a special-setup server (GitHub, reusing the
+/// App connection) shares the shape with generic bearer/none servers. OAuth is
+/// added in a later phase.
+package mcp;
+
+/// How horsie authenticates to a remote MCP server. Informational mirror of the
+/// `McpAuthView`/`McpAuthInput` tags.
+enum McpAuthKind {
+    None,
+    Bearer,
+    OAuth,
+    GithubApp,
+}
+
+/// A public server needing no credentials.
+struct McpNoAuth {}
+
+/// GitHub MCP over the existing GitHub App connection: the bearer is a user
+/// token minted from `GithubService` at use time, never stored on the row.
+struct McpGithubAppAuth {}
+
+/// Static bearer auth, redacted — the token is replaced by a stored flag.
+struct McpBearerView {
+    has_token: bool,
+}
+
+/// Static bearer auth input. `token`: omit to keep the stored value, "" to
+/// clear, a value to replace.
+struct McpBearerInput {
+    token: Option<String>,
+}
+
+/// Redacted OAuth 2.1 auth view. `connected` = a stored access token exists;
+/// secrets are redacted to flags. `client_id` is safe to surface (public).
+struct McpOAuthView {
+    connected: bool,
+    client_id: Option<String>,
+    has_client_secret: bool,
+}
+
+/// OAuth 2.1 auth input. All fields optional: leave everything empty to let
+/// horsie discover the authorization server and dynamically register a client
+/// (RFC 9728 / 8414 / 7591). Set `client_id`/`client_secret` to reuse a
+/// pre-registered client; set the `*_endpoint` fields to override discovery when
+/// the server exposes no metadata. Secrets: omit=keep, ""=clear, value=set.
+struct McpOAuthInput {
+    client_id: Option<String>,
+    client_secret: Option<String>,
+    authorization_endpoint: Option<String>,
+    token_endpoint: Option<String>,
+    registration_endpoint: Option<String>,
+}
+
+/// Redacted auth view for a configured server.
+#[type_tag = "kind"]
+union McpAuthView {
+    None(McpNoAuth),
+    Bearer(McpBearerView),
+    OAuth(McpOAuthView),
+    GithubApp(McpGithubAppAuth),
+}
+
+/// Auth input for an upsert.
+#[type_tag = "kind"]
+union McpAuthInput {
+    None(McpNoAuth),
+    Bearer(McpBearerInput),
+    OAuth(McpOAuthInput),
+    GithubApp(McpGithubAppAuth),
+}
+
+/// One configured remote MCP server, redacted for display.
+struct McpServerView {
+    /// Stable id and namespace prefix for its tools (`mcp__<name>__<tool>`).
+    name: String,
+    /// Streamable-HTTP endpoint.
+    url: String,
+    /// Whether the last connect/test succeeded and the server is usable.
+    enabled: bool,
+    auth: McpAuthView,
+    /// Tools advertised at the last successful test, for the UI.
+    tool_count: Option<u32>,
+    /// Last connect/test error, for the UI.
+    last_error: Option<String>,
+}
+
+/// Upsert input for a server. Secrets follow omit=keep, ""=clear semantics.
+struct McpServerInput {
+    name: String,
+    url: String,
+    auth: McpAuthInput,
+}
+
+/// The result of a connect/smoke test (`initialize` + `tools/list`).
+struct McpConnectResult {
+    ok: bool,
+    tool_count: Option<u32>,
+    error: Option<String>,
+}
+
+/// The configured servers, for the settings API.
+struct McpServerList {
+    servers: Vec<McpServerView>,
+}
+
+/// The authorize URL to redirect the browser to, returned by `connect` for an
+/// `oauth` server after discovery + (if needed) dynamic client registration.
+struct McpAuthorizeUrl {
+    url: String,
+}

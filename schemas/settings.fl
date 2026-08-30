@@ -1,0 +1,155 @@
+/// Wire types for the server settings API: a redacted view of the
+/// runtime-editable configuration, and the update inputs that replace it.
+/// Secrets are never returned — provider/vendor views carry only a boolean
+/// flag for a stored inline secret.
+package settings;
+
+/// One configured LLM provider, redacted for display.
+struct ProviderView {
+    /// Provider name — the key a model's `provider` references.
+    name: String,
+    /// Provider kind: "anthropic" or "openai".
+    kind: String,
+    base_url: Option<String>,
+    /// Whether this provider can authenticate at all: a ChatGPT plan is signed
+    /// in, any other kind has a stored `api_key`. Which of the two applies
+    /// follows from `kind`, so one flag serves both — and a provider that
+    /// cannot authenticate is one no model should be added to.
+    has_credential: bool,
+    /// Retain thinking-block signatures from this provider. Required for
+    /// genuine Anthropic (it validates them on replay); off for
+    /// Anthropic-compatible endpoints, which do not.
+    keep_thinking_signature: bool,
+}
+
+/// One configured model alias.
+struct ModelView {
+    /// The alias sessions select (e.g. "sonnet").
+    alias: String,
+    /// Name of the provider this model routes to.
+    provider: String,
+    /// The provider's model identifier (e.g. "claude-sonnet-4-6").
+    model_id: String,
+    max_tokens: Option<u32>,
+    /// The model's total context window, in tokens. A built-in default is
+    /// applied for known model ids when a model is added with this omitted.
+    context_window: Option<u32>,
+    /// Canonical thinking-effort values this model offers, in ascending order.
+    /// Absent → the model exposes no thinking control.
+    thinking_efforts: Option<Vec<String>>,
+    /// Default applied when a session does not choose one.
+    thinking_effort: Option<String>,
+    /// This backend rejects a pinned `tool_choice` while thinking is enabled,
+    /// so thinking is disabled for those requests. Absent means false.
+    forced_tools_disable_thinking: Option<bool>,
+    /// Wire encoding for this model's thinking control.
+    thinking_dialect: Option<String>,
+    /// This model can be shown images. Absent means false.
+    supports_images: Option<bool>,
+    /// This model can be shown documents (PDFs). A separate flag from
+    /// `supports_images` because the two are genuinely different capabilities:
+    /// the OpenAI chat wire takes images almost everywhere but reaches PDFs by
+    /// another route, and Anthropic's PDF support is per model. One flag would
+    /// have to lie about one of them. Absent means false.
+    supports_documents: Option<bool>,
+}
+
+/// What a vendor can do with a session workspace. The new-session UI reads it
+/// to decide what to prompt for, instead of branching on the vendor's name.
+///
+/// Structurally identical to `runtime_vendor.RuntimeVendorCapabilities`, and
+/// deliberately not the same type. That one is what a vendor process announces
+/// on its own wire; this one is what the settings API reports. They agree
+/// today because both have one field — unifying them would make the settings
+/// package depend on the whole vendor protocol, and would tie a UI-facing
+/// shape to a change in an unrelated protocol.
+struct VendorCapabilities {
+    /// The vendor provisions a workspace it owns — cloning repos, installing
+    /// skill bundles, running provision steps. A vendor that runs in a fixed,
+    /// user-owned directory (the shared local daemon) provisions nothing.
+    supports_provisioning: bool,
+}
+
+/// A runtime vendor sessions can target.
+///
+/// A live roster rather than a settings record: a vendor process appears once
+/// it completes the handshake and disappears when its link drops, and a vendor
+/// configured on the server appears as soon as it is saved. What a configured
+/// one is made of is not here — see `runtime_vendor.RuntimeVendorConfigView`.
+struct VendorView {
+    /// The name sessions select by.
+    name: String,
+    /// Whether new sessions default to this vendor.
+    is_default: bool,
+    /// What this vendor can do with a session workspace.
+    capabilities: VendorCapabilities,
+}
+
+/// Read-only deployment paths and version, for transparency. `config_path` is
+/// the deployment config file (config.json); `database` is where the editable
+/// settings above are stored — the two never overlap.
+struct ServerInfo {
+    config_path: String,
+    database: String,
+    state_dir: String,
+    data_dir: String,
+    plugins_dir: String,
+    version: String,
+}
+
+/// Full settings snapshot — returned by `GET /api/config` and after an update.
+struct SettingsView {
+    providers: Vec<ProviderView>,
+    models: Vec<ModelView>,
+    vendors: Vec<VendorView>,
+    default_runtime_vendor: String,
+    info: ServerInfo,
+    /// Always false: every provider/model edit applies live. Retained for wire
+    /// compatibility.
+    restart_required: bool,
+}
+
+// --- update inputs ---
+
+/// A provider to persist. Replaces any provider of the same `name`.
+struct ProviderInput {
+    name: String,
+    /// Provider kind: "anthropic" or "openai".
+    kind: String,
+    base_url: Option<String>,
+    /// New inline key. Omit to keep the existing stored key; "" to clear.
+    api_key: Option<String>,
+    /// Retain thinking-block signatures from this provider. Omit for the
+    /// default (off) — required for genuine Anthropic, which validates them.
+    keep_thinking_signature: Option<bool>,
+}
+
+/// A model alias to persist.
+struct ModelInput {
+    alias: String,
+    provider: String,
+    model_id: String,
+    max_tokens: Option<u32>,
+    context_window: Option<u32>,
+    thinking_efforts: Option<Vec<String>>,
+    thinking_effort: Option<String>,
+    thinking_dialect: Option<String>,
+    /// This backend rejects a pinned `tool_choice` while thinking is enabled,
+    /// so thinking is disabled for those requests. Absent means false.
+    forced_tools_disable_thinking: Option<bool>,
+    /// This model can be shown images. Absent means false.
+    supports_images: Option<bool>,
+    /// This model can be shown documents (PDFs). Separate from
+    /// `supports_images` because the wires differ per provider and per model.
+    /// Absent means false.
+    supports_documents: Option<bool>,
+}
+
+/// Set the runtime vendor new sessions default to when they name none.
+///
+/// Deliberately not validated against the live roster: the agent answering to
+/// this name may connect long after the preference is set, and rejecting it
+/// here would make the setting unusable before its agent is running.
+struct DefaultRuntimeVendorInput {
+    vendor: String,
+}

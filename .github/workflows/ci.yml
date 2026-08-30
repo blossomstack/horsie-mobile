@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run lint
+
+  schemas:
+    # The wire types are generated from horsie's `.fl` files at the ref pinned
+    # in schemas/HORSIE_REF. Re-running the sync and the generator here is what
+    # keeps a hand-edited type, or a pin someone moved without regenerating,
+    # from reaching main quietly.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Install fluorite
+        run: npm install -g @blossomstack/fluorite-cli
+      - run: npm run check:schemas

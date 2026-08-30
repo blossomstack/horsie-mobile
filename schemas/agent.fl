@@ -1,0 +1,525 @@
+/// Protocol types for agent messages
+package agent;
+
+use hooks.HookRecord;
+
+/// Role of the message sender
+enum Role {
+    User,
+    Assistant,
+    Tool,
+}
+
+/// Plain text content
+struct TextPart {
+    text: String,
+}
+
+/// A tool call requested by the model
+struct ToolCallPart {
+    id: String,
+    name: String,
+    input: Any,
+}
+
+/// The result of executing a tool call
+struct ToolResultPart {
+    tool_call_id: String,
+    output: String,
+    is_error: bool,
+    /// What the call produced that is not text — a screenshot, a generated
+    /// PDF. A field beside `output` rather than a separate part, because a
+    /// tool result is one thing that has both a transcript and artifacts.
+    ///
+    /// Defaulted, and that is load-bearing rather than tidy: this type is
+    /// journaled, so every tool result written before this field existed
+    /// deserializes without it. A required field here would fail `recover()`
+    /// for every session that has ever called a tool.
+    #[default = "[]"]
+    artifacts: Vec<ArtifactRef>,
+}
+
+/// Extended thinking content
+struct ThinkingPart {
+    text: String,
+    signature: Option<String>,
+}
+
+/// A finished subagent's result, delivered to the agent that spawned it.
+/// Carried as its own part rather than merged into the user text so a client
+/// can render it as agent activity instead of as something the person said;
+/// providers flatten it back to the same text block they have always received.
+struct SubAgentResultPart {
+    subagent_id: String,
+    /// What the subagent was called: the `title` its spawner gave it.
+    title: String,
+    /// "completed" | "failed" — the SubAgentView.status vocabulary.
+    status: String,
+    /// Output on success, error text on failure. Already capped at 50 KB by
+    /// the session, truncation marker included.
+    text: String,
+    /// When the subagent was spawned and when it reached this result. Zero on
+    /// rows journaled before these were recorded — a client shows no duration
+    /// rather than an invented one.
+    spawned_at_ms: u64,
+    ended_at_ms: u64,
+}
+
+/// What shape an artifact is, and the facts that only that shape has.
+///
+/// A field on the reference rather than a split of it: kind and "has this been
+/// stored yet" are independent axes, and nesting them multiplies arms for
+/// nothing. Adding audio or video later is one new variant here, and because
+/// every provider matches this exhaustively, each of them fails to compile
+/// until someone says what it does with the new kind.
+#[type_tag = "kind"]
+union ArtifactKind {
+    Image(ImageArtifact),
+    Document(DocumentArtifact),
+}
+
+/// Pixel dimensions, read from the file header rather than by decoding.
+///
+/// Absent when the header would not parse. They are a layout hint — a client
+/// reserves space so the transcript does not jump when a thumbnail loads — so a
+/// missing value costs a small shift, where a guessed one would render the
+/// image wrong.
+struct ImageArtifact {
+    width: Option<u32>,
+    height: Option<u32>,
+}
+
+/// A PDF. Carries no page count: that would need a real PDF parser, and a
+/// document renders as a file chip rather than a thumbnail.
+struct DocumentArtifact {}
+
+/// An image or document a message carries, named rather than embedded.
+///
+/// This is the *only* artifact shape a message ever holds — in the journal, in
+/// agent state, over SSE and over the HTTP API alike. The bytes live in the
+/// artifact service and are fetched by `id`.
+///
+/// Why never the bytes: `AgentState.log` is the whole transcript and is
+/// snapshotted as one blob, so an inlined image would be rewritten into every
+/// later snapshot of that agent and re-sent on every backfill. Because this
+/// type cannot carry bytes, that is not a rule anyone has to remember.
+struct ArtifactRef {
+    /// Lowercase-hex sha256 of the bytes. Content-addressed, so the same image
+    /// sent twice is stored once and a fetch URL is safe to cache for ever.
+    id: String,
+    /// The type the server sniffed from the bytes. Never the caller's claim:
+    /// a browser's `Content-Type` and an MCP block's `mimeType` are both only
+    /// assertions about content the server has in hand.
+    media_type: String,
+    kind: ArtifactKind,
+    byte_size: u64,
+    /// What the client called it. Absent for a paste, which has no filename.
+    filename: Option<String>,
+}
+
+/// An artifact in a message.
+struct ArtifactPart {
+    artifact: ArtifactRef,
+}
+
+/// Content variant within a message
+#[type_tag = "type"]
+union ContentPart {
+    Text(TextPart),
+    ToolCall(ToolCallPart),
+    ToolResult(ToolResultPart),
+    Thinking(ThinkingPart),
+    SubAgentResult(SubAgentResultPart),
+    Artifact(ArtifactPart),
+}
+
+/// A single message in the conversation
+struct Message {
+    id: String,
+    role: Role,
+    parts: Vec<ContentPart>,
+    /// Unix-epoch ms when the server finalized this message — turn start for a
+    /// user message, stream completion for an assistant message, tool
+    /// completion for a tool result.
+    created_at_ms: u64,
+    /// Unix-epoch ms when the provider call that produced this message was
+    /// issued. Assistant messages only; absent elsewhere.
+    started_at_ms: Option<u64>,
+}
+
+/// A plugin hook's intervention, as it appears in an agent's transcript.
+struct HookEntry {
+    /// Cursor id, in the same space as `Message.id`. Derived from the transcript
+    /// rather than generated (`hook:{n}`, `n` being how many hook entries precede
+    /// it) so journal replay produces the ids it produced the first time. A uuid
+    /// would give a recovered transcript different cursors than the live one.
+    /// Counting entries rather than records-against-a-call is what lets a
+    /// `SessionStart` record — which has no tool call — carry an id at all; the
+    /// tool join goes through the record's own `ToolScope`.
+    id: String,
+    created_at_ms: u64,
+    record: HookRecord,
+}
+
+/// One item in an agent's transcript.
+///
+/// A transcript is not a conversation: a `Hook` entry is what a plugin *did*, and
+/// only some of those put text in front of the model. `AgentState::prompt_messages`
+/// translates every entry on the way to a provider, and most hook entries
+/// translate to nothing — a tool hook edited the tool's own output, so the tool
+/// result already carries it. Because the union sits above `Message` rather than
+/// inside `ContentPart`, no provider ever holds an arm for an entry it would have
+/// to interpret itself, and clients keep receiving hook entries verbatim so an
+/// intervention renders as an intervention rather than as something the user said.
+#[type_tag = "type"]
+union HistoryEntry {
+    Llm(Message),
+    Hook(HookEntry),
+}
+
+/// Status of one entry in the agent's `task_list` tool state.
+enum TaskStatus {
+    Pending,
+    InProgress,
+    Completed,
+}
+
+/// One entry in the agent's `task_list` tool state.
+struct TaskItem {
+    id: u32,
+    content: String,
+    status: TaskStatus,
+}
+
+// --- The agent log ---------------------------------------------------------
+
+/// One item in an agent's log: the single ordered record a client reads.
+///
+/// The agent actor is its only writer, which is what makes the order
+/// deterministic without any merge — one actor, one mailbox, one fold, and
+/// replay reproduces exactly what ran live.
+struct AgentLogEntry {
+    /// Monotonic within this agent, assigned in the fold. This is the cursor.
+    ///
+    /// Stored rather than implied by position: the log is not front-trimmed
+    /// today, but storing it keeps trimming available for context management
+    /// and lets a cursor resolve by binary search instead of a scan.
+    seq: u64,
+    at_ms: u64,
+    body: AgentLogBody,
+}
+
+/// What one log entry carries.
+///
+/// Four arms, not a dozen: `AgentState::prompt_messages` is a match over this
+/// union, and a single `Lifecycle` arm mapping to nothing covers every
+/// lifecycle variant that will ever exist. Flattening the variants in here
+/// would make provider isolation a per-variant obligation a future addition
+/// could forget.
+///
+/// `Compaction` is the one arm whose meaning depends on where it sits: the
+/// newest one decides where the prompt starts, and every older one is history
+/// that shows the model nothing. See [`CompactionEntry`].
+#[type_tag = "type"]
+union AgentLogBody {
+    Llm(Message),
+    Hook(HookEntry),
+    Lifecycle(LifecycleEvent),
+    Compaction(CompactionEntry),
+}
+
+/// One kind of thing an agent's log holds, as a reader chooses between them.
+///
+/// A projection of [`AgentLogBody`] with its `Llm` arm split by role, because
+/// that split is the distinction a reader actually makes: "what the person
+/// said" and "what the model answered" are two questions, and both are `Llm`.
+///
+/// Thinking is deliberately not a kind here. It is a *part* inside an assistant
+/// message and never an entry of its own, so a `Thinking` arm would select
+/// nothing and quietly return an empty page to anyone who asked for it. Whether
+/// to keep thinking is the filter's other axis.
+enum LogEntryKind {
+    UserMessage,
+    AssistantMessage,
+    ToolResult,
+    Hook,
+    Lifecycle,
+    Compaction,
+}
+
+/// Something that happened to the session, recorded in the log of the agent it
+/// concerns.
+///
+/// The session actor still owns every one of these; it notifies the agent so
+/// there is one ordered record to read rather than a second stream to reconcile
+/// against this one. Flow is one-directional: session to agent, never back.
+#[type_tag = "kind"]
+union LifecycleEvent {
+    Runtime(RuntimeLifecycle),
+    Preparing(PreparingLifecycle),
+    MessageQueued(QueuedLifecycle),
+    TurnBegan(TurnBeganLifecycle),
+    TurnEnded(TurnEndedLifecycle),
+    AskRecorded(AskLifecycle),
+    SubAgent(SubAgentLifecycle),
+    SubSession(SubSessionLifecycle),
+    Step(StepLifecycle),
+    TaskList(TaskListLifecycle),
+    SessionFailed(SessionFailedLifecycle),
+    CompactionSkipped(CompactionSkippedLifecycle),
+}
+
+/// Whether the session's sandbox exists. A fact about the session, not
+/// narration: an agent may not start a turn without a runtime, so this is the
+/// notification that lets one begin.
+struct RuntimeLifecycle { status: RuntimeStatus, detail: Option<String> }
+
+/// The three states a session's sandbox can be in from an agent's point of
+/// view. Typed rather than a stage string because a consumer acts on it, and a
+/// label shared with turn-preparation progress could not be told apart.
+#[type_tag = "kind"]
+union RuntimeStatus {
+    Acquiring(EmptyOutcome),
+    Ready(EmptyOutcome),
+    Failed(EmptyOutcome),
+}
+
+/// How far this turn's setup has got: `scanning_workspace`, `connecting_tools`,
+/// `ready`. Narration, and free-form on purpose — nothing acts on it, and the
+/// stages differ per vendor.
+struct PreparingLifecycle { stage: String, detail: Option<String> }
+
+/// A message accepted into this agent's inbox and not yet carried into a turn.
+struct QueuedLifecycle { id: String, text: String }
+
+/// A turn started, consuming these queued message ids and answering these asks.
+struct TurnBeganLifecycle { consumed: Vec<String>, answered: Vec<String> }
+
+/// A turn finished, however it finished.
+struct TurnEndedLifecycle { outcome: TurnOutcome }
+
+/// How a turn ended. One entry with an outcome rather than four sibling
+/// lifecycle variants: every consumer that cares about "the turn is over"
+/// should not have to enumerate the ways.
+#[type_tag = "kind"]
+union TurnOutcome {
+    Ended(EmptyOutcome),
+    Failed(FailedOutcome),
+    Stopped(EmptyOutcome),
+    Interrupted(EmptyOutcome),
+}
+
+struct EmptyOutcome {}
+struct FailedOutcome { error: String }
+
+/// The agent asked the user something and is parked on it.
+struct AskLifecycle { tool_call_id: Option<String>, question: String }
+
+/// A subagent this agent spawned, and where it got to. Recorded on the
+/// *parent*, because the parent is what a viewer is reading when it matters.
+struct SubAgentLifecycle { id: String, title: String, status: String }
+
+/// A sub session branched from this session. Recorded on the agent it was
+/// branched *from*, because that is what a viewer is reading when it matters —
+/// the same rule `SubAgentLifecycle` follows — and it marks the branch point,
+/// sitting between the two messages it was taken between.
+///
+/// Never reaches the model: `prompt_messages` drops every lifecycle body. That
+/// is deliberate. A sub session is for the person reading, and telling the
+/// source about one would disturb its prompt cache for nothing.
+///
+/// `title` is what the sub session has named itself, which is nothing at the
+/// moment it is created — a client reads the current one from the session list.
+///
+/// `seed` is how its history was seeded: `copy`, `summary` or `fresh`.
+struct SubSessionLifecycle { id: String, title: Option<String>, seed: String }
+
+/// One workflow step's progress, recorded on that step's own agent. Carries the
+/// step's `name` as well as its index: the index identifies the execution, but
+/// the name is what a person reading the run recognises.
+struct StepLifecycle { index: u32, name: String, status: String }
+
+/// The agent's `task_list` state, whole. Both the current value and the
+/// notification that it changed — a client folds it, last one wins.
+struct TaskListLifecycle { tasks: Vec<TaskItem> }
+
+/// Terminal: this session can never run again.
+struct SessionFailedLifecycle { reason: String }
+
+/// A typed `/compact` that had nothing to fold.
+///
+/// Recorded rather than passed over in silence, which is what it used to be: a
+/// command was typed and something has to answer it. The cut is the same
+/// retain budget an automatic compaction uses, so a conversation already
+/// inside that budget has no span to summarise — and forcing one would spend a
+/// provider call and trade real messages for a summary to buy room that was
+/// never scarce.
+///
+/// Not a failure, and not an error: the honest answer to "compact this" is
+/// sometimes "there is nothing here worth compacting".
+struct CompactionSkippedLifecycle {
+    /// The prompt size the last provider call reported.
+    context_tokens: u32,
+    /// How much of the window a compaction would have left verbatim — so the
+    /// notice can say what it measured against. Absent when the model's card
+    /// declares no context window and there is therefore no budget.
+    retain_tokens: Option<u32>,
+}
+
+// --- Compaction ------------------------------------------------------------
+
+/// A point at which older history stopped being shown to the model.
+///
+/// Nothing is deleted when one of these is appended. The log keeps every entry
+/// it ever held — which is what lets a person read the whole session — and this
+/// entry only moves where `AgentState::prompt_messages` *starts*. The record is
+/// complete; the working set is not.
+///
+/// Only the newest boundary in a log has any effect on the prompt. An older one
+/// is a fact about what happened, and shows the model nothing: the span it
+/// covered is already folded into the summary of every boundary that came after
+/// it, so replaying it would say the same thing twice.
+struct CompactionEntry {
+    /// The model's prose account of everything up to `covers_through_seq`.
+    /// Lossy by nature, and the reason `carried_state` exists separately.
+    ///
+    /// Each summary is written with the previous one already in the prompt, so
+    /// summarising is a fold rather than a re-derivation: no span is ever
+    /// summarised twice, and the cost of a compaction does not grow with the
+    /// number that came before it.
+    summary: String,
+    /// Facts too exact to paraphrase — the task list, armed timers, pending
+    /// asks, the working directory — rendered from state and never routed
+    /// through the summariser.
+    ///
+    /// This exists because state surviving is not the same as the model knowing
+    /// it survived. A task list is durable agent state, but the model's
+    /// awareness of it is carried entirely by the tool calls in the history
+    /// that a compaction summarises away. Without this an agent wakes up with
+    /// three open tasks and no idea it has any.
+    ///
+    /// Frozen here rather than re-rendered on every prompt build: re-rendering
+    /// would invalidate the provider's cache below this boundary on every
+    /// single turn, and it is unnecessary, because anything that changes after
+    /// this point arrives as a visible tool call in the retained history. This
+    /// is the baseline; the deltas are in plain sight.
+    carried_state: String,
+    /// The last entry folded into `summary`.
+    covers_through_seq: u64,
+    /// The first entry still shown to the model raw. Never greater than
+    /// `covers_through_seq + 1`, and equal to it when nothing was retained.
+    ///
+    /// The retained window overlaps what the summary already covers, which is
+    /// deliberate: a summary alone loses the file path or error the agent was
+    /// part-way through, and those live in the last few messages.
+    retained_from_seq: u64,
+    trigger: CompactionTrigger,
+    /// What `/compact <instructions>` asked the summariser to keep. Absent for
+    /// an automatic compaction.
+    instructions: Option<String>,
+    /// Prompt size either side of the boundary, for the transcript's own
+    /// account of what this bought.
+    tokens_before: u32,
+    tokens_after: u32,
+}
+
+/// Why a compaction happened. Two arms rather than a bool so a third reason
+/// (a provider overflow, say) is an arm rather than a second flag.
+#[type_tag = "kind"]
+union CompactionTrigger {
+    Auto(EmptyOutcome),
+    Manual(EmptyOutcome),
+}
+
+/// Token usage for a model turn
+struct Usage {
+    /// The full size of the prompt sent to the model, normalized so this
+    /// means the same thing on every wire: it INCLUDES any cache-read/
+    /// cache-creation tokens (Anthropic's own wire reports those separately
+    /// from its "input" count, so the Anthropic provider adds them back in
+    /// here — OpenAI's `prompt_tokens` already includes `cached_tokens`, so
+    /// no adjustment is needed there). The cache fields below are a cost
+    /// breakdown of this total, not additional tokens on top of it.
+    input_tokens: u32,
+    output_tokens: u32,
+    /// Tokens written to a new prompt-cache entry this turn (Anthropic only;
+    /// billed at a premium). Absent when the provider reports no cache data.
+    cache_creation_tokens: Option<u32>,
+    /// Tokens served from an existing prompt-cache entry this turn
+    /// (Anthropic + OpenAI-compatible `cached_tokens`; billed at a discount).
+    /// Absent when the provider reports no cache data.
+    cache_read_tokens: Option<u32>,
+}
+
+/// New user message — starts a new turn
+struct UserMessageInput {
+    id: String,
+    /// May be empty: a turn started purely by owed subagent results carries
+    /// nothing the person typed.
+    text: String,
+    /// Finished subagents' results delivered with this turn.
+    subagent_results: Vec<SubAgentResultPart>,
+    /// What the person attached. Defaulted for the same durability reason as
+    /// `ToolResultPart.artifacts` — this type is journaled.
+    #[default = "[]"]
+    artifacts: Vec<ArtifactRef>,
+}
+
+/// Tool result input — resumes the agent after a handoff
+struct ToolResultInput {
+    tool_call_id: String,
+    output: String,
+    is_error: bool,
+    /// Defaulted for the same durability reason as `ToolResultPart`.
+    #[default = "[]"]
+    artifacts: Vec<ArtifactRef>,
+}
+
+/// One or more tool results delivered together — every parked call of a turn is
+/// answered at once, so no `tool_use` ever reaches a provider without a result
+struct ToolResultsInput {
+    results: Vec<ToolResultInput>,
+}
+
+/// The only valid inputs to Agent::run
+#[type_tag = "type"]
+union AgentInput {
+    UserMessage(UserMessageInput),
+    ToolResult(ToolResultInput),
+    ToolResults(ToolResultsInput),
+}
+
+/// Agent completed with a final text response
+struct CompletedOutput {
+    text: String,
+}
+
+/// One call to a tool that ended the run by returning `StopRun`. Nothing is
+/// recorded for it — no result, no completion event — so the `tool_use` stays
+/// dangling, which is what lets an answer arrive against it later, or never
+struct StoppedCall {
+    /// Which tool ended the run. The caller decides what that means; the agent
+    /// loop only reports it
+    tool: String,
+    tool_call_id: String,
+    input: Any,
+}
+
+/// A tool ended the run. `submit_result` is always one call; `ask_user` may be
+/// several issued in the same turn, and all of them are answered together
+struct StoppedOutput {
+    calls: Vec<StoppedCall>,
+}
+
+/// The outcome of an agent run
+#[type_tag = "type"]
+union AgentResult {
+    Completed(CompletedOutput),
+    Stopped(StoppedOutput),
+}
+
+/// The full output of Agent::run
+struct AgentOutput {
+    result: AgentResult,
+    usage: Usage,
+}

@@ -1,0 +1,218 @@
+/// Workflows: a named graph of steps, each step an agent preset with a fixed
+/// prompt, wired together by the outcome each step reports.
+///
+/// A definition is only the graph. The environment it runs in is a property of
+/// the invocation, not of the saved configuration — a pinned vendor is
+/// invisible once it disconnects and fatal at invoke, and a hardcoded checkout
+/// can only ever be run one way. A step's preset supplies the model, MCP
+/// servers, memory spaces and thinking effort, and nothing about where the work
+/// happens: the workflow owns one runtime shared by every step.
+package workflow;
+
+use environments.EnvironmentSpec;
+use session.SessionSummary;
+
+/// Which outcomes an edge is taken for.
+///
+/// Two operators, not four: equality is a one-element `in`, and inequality a
+/// one-element `not_in`. Every value must be one the producing step declares,
+/// which is checked when the workflow is saved — so a mistyped outcome is a
+/// rejected form rather than a run that ends halfway.
+#[type_tag = "op"]
+union OutcomeFilter {
+    In(OutcomeIn),
+    NotIn(OutcomeNotIn),
+}
+
+struct OutcomeIn { values: Vec<String> }
+struct OutcomeNotIn { values: Vec<String> }
+
+/// A directed edge out of a step, optionally gated by the outcome it produced.
+///
+/// `when` is matched against the producing step's `outcome`. Absent is an
+/// unconditional catch-all. Transitions are tried in order and the first match
+/// wins. A step whose transitions all fail to match ends the run, carrying that
+/// step's result as the run's.
+struct WorkflowTransition {
+    to: String,
+    when: Option<OutcomeFilter>,
+}
+
+/// One value a step's `outcome` may take, and what choosing it means.
+///
+/// The description is not decoration: it is what the model reads to pick
+/// between values, and it is the only thing standing between "failure" meaning
+/// *the work failed* and meaning *I could not finish*.
+struct StepOutcome {
+    value: String,
+    description: String,
+}
+
+/// The type of one declared result field.
+enum StepFieldType {
+    String,
+    Number,
+    Boolean,
+    StringList,
+}
+
+/// One field a step's result carries beyond `outcome` and `description`.
+struct StepField {
+    name: String,
+    kind: StepFieldType,
+    /// Required. An undocumented field is one the model fills in by guessing.
+    description: String,
+    /// Whether the step must always supply it. Absent → optional.
+    required: Option<bool>,
+}
+
+/// One step in a workflow graph.
+struct WorkflowStepDef {
+    name: String,
+    /// Agent preset this step runs as.
+    agent: String,
+    /// The step's instruction. Whatever the step is handed — the run's input
+    /// for the start step, the previous step's result for every other — is
+    /// appended below it under a header.
+    prompt: String,
+    /// The values this step's `outcome` may take. Absent → success / failure.
+    ///
+    /// A step finishes by calling `submit_result`, whose input schema is
+    /// compiled from these plus `fields` and a required markdown `description`.
+    /// Transitions read `outcome` and nothing else.
+    outcomes: Option<Vec<StepOutcome>>,
+    /// Extra result fields, beyond `outcome` and `description`.
+    fields: Option<Vec<StepField>>,
+    /// Whether this step may ask the person a question. Absent → false, and
+    /// the step has no `ask_user` tool at all.
+    interactive: Option<bool>,
+    /// Outgoing transitions, matched against this step's `outcome`.
+    transitions: Option<Vec<WorkflowTransition>>,
+    /// Cap on agent-loop iterations for this step.
+    max_iterations: Option<u32>,
+    /// Retry budget for transient provider errors within this step.
+    max_retries: Option<u32>,
+}
+
+/// A workflow as shown to clients.
+struct WorkflowView {
+    /// Slug; the id of record, used in API paths.
+    name: String,
+    description: String,
+    /// Name of the step every run begins at.
+    start: String,
+    steps: Vec<WorkflowStepDef>,
+    /// Most step executions one run may perform before it is failed. Absent →
+    /// the server's default.
+    max_steps: Option<u32>,
+    /// Unix epoch seconds.
+    created_at: String,
+    updated_at: String,
+}
+
+/// Create or fully replace a workflow. `description` defaults to "".
+struct WorkflowInput {
+    name: String,
+    description: Option<String>,
+    start: String,
+    steps: Vec<WorkflowStepDef>,
+    /// Most step executions one run may perform before it is failed; at least 1.
+    /// Absent → the server's default.
+    ///
+    /// The only thing bounding a graph whose loop condition never flips, which
+    /// is why it lives on the definition rather than on the run request: the
+    /// budget is a property of the graph's shape, and a workflow that
+    /// legitimately loops twenty times knows that about itself.
+    max_steps: Option<u32>,
+}
+
+/// Start a run: the configuration creating a session takes, plus the input the
+/// start step is handed.
+struct WorkflowRunRequest {
+    input: String,
+    /// Where the run's single shared runtime is built, and what it runs
+    /// against. Required.
+    environment: EnvironmentSpec,
+    /// Optional run title.
+    name: Option<String>,
+}
+
+/// The session a run created. It is running by the time this is returned.
+struct WorkflowRunResponse { session: SessionSummary }
+
+/// What became of one step execution.
+#[type_tag = "type"]
+union StepRunStatus {
+    Running(StepRunning),
+    Concluded(StepConcluded),
+    Failed(StepFailed),
+    Cancelled(StepCancelled),
+}
+
+struct StepRunning {}
+struct StepConcluded {}
+struct StepFailed {}
+struct StepCancelled {}
+
+/// One execution of one step. A step visited twice — by a loop or by a retry —
+/// has two of these.
+struct StepRunView {
+    /// Position in the run log; the id a retry names.
+    index: u32,
+    /// Which step of the definition ran.
+    step: String,
+    /// The agent this execution is, addressable at
+    /// `/sessions/:id/agents/:agent_id`.
+    agent_id: String,
+    /// 1 for the first execution of this step on this path.
+    attempt: u32,
+    status: StepRunStatus,
+    /// The structured output it concluded with.
+    output: Option<Any>,
+    error: Option<String>,
+    started_at_ms: u64,
+    ended_at_ms: Option<u64>,
+    /// Tokens this execution spent.
+    input_tokens: u32,
+    output_tokens: u32,
+}
+
+/// One node of the run graph: a step of the definition, plus every execution
+/// that landed on it. `runs` is empty for a step the run never reached.
+struct RunNode {
+    step: String,
+    runs: Vec<StepRunView>,
+}
+
+/// One edge of the run graph: a transition of the definition, plus which
+/// executions took it. `traversals` is empty for an edge never taken.
+struct RunEdge {
+    from: String,
+    to: String,
+    /// The filter this edge is taken for, rendered for display — `outcome in
+    /// [p0, p1]`. Absent on a catch-all.
+    condition: Option<String>,
+    traversals: Vec<u32>,
+}
+
+/// A run, projected onto the definition's graph.
+struct WorkflowRunGraph {
+    /// The workflow this run was started from. The definition is snapshotted
+    /// at run creation, so editing or deleting it does not change this run.
+    workflow: String,
+    /// Index into the run log of the execution in flight.
+    current: Option<u32>,
+    start: String,
+    nodes: Vec<RunNode>,
+    edges: Vec<RunEdge>,
+    /// The last step's output, once the run has finished.
+    output: Option<Any>,
+    error: Option<String>,
+    /// Every step's tokens, summed.
+    input_tokens: u32,
+    output_tokens: u32,
+}
+
+/// Re-run one step execution. The new attempt appends to the run log; earlier
+/// attempts are kept. A live run's current step is cancelled first.
+struct WorkflowRetryRequest { step_index: u32 }

@@ -1,0 +1,274 @@
+/// Protocol types for server <-> runtime-vendor communication.
+///
+/// A runtime vendor is an external process that owns runtime lifecycle: it
+/// spawns or schedules runtimes, listens for their dial-back, and relays the
+/// runtime protocol between them and the server over this one link.
+///
+/// Naming follows `runtime.fl`: inbound/outbound are named from the *vendor's*
+/// point of view (a vendor receives commands and sends events), correlated
+/// operations come in `XxxRequest`/`XxxResponse` pairs, and unsolicited
+/// announcements get plain names.
+///
+/// Everything that is not lifecycle is relayed verbatim rather than
+/// re-modelled — see `RuntimeRelayRequest`. The vendor does not understand
+/// tool calls, and should not have to.
+package runtime_vendor;
+
+use executor.EnvVar;
+use executor.RuntimeInfo;
+use executor.RuntimeState;
+use runtime.RuntimeInboundMessage;
+use runtime.RuntimeOutboundMessage;
+
+// --- Payloads ───────────────────────────────────────────────────────────────
+
+/// What a vendor can do with a session workspace, announced by the vendor
+/// itself so the server and UI never branch on vendor name or kind.
+struct RuntimeVendorCapabilities {
+    /// The vendor provisions a fresh workspace it owns — cloning repos,
+    /// installing skill bundles, running provision steps. A vendor fixed to a
+    /// user-owned directory announces false.
+    supports_provisioning: bool,
+}
+
+/// Everything the server can supply about a runtime. Deliberately minimal:
+/// anything the vendor knows better (workspace paths, plugin unpack dirs,
+/// artifact base URLs) is resolved vendor-side and never crosses the wire.
+struct RuntimeSpec {
+    /// Workspace *names*. The vendor resolves each to a path it owns, and
+    /// fails the request if it cannot honor one.
+    workspaces: Vec<String>,
+    /// Resolved values only the server can mint: the runtime's dial token, the
+    /// plugin bundle manifest, and the session's own environment variables.
+    ///
+    /// The dial token is the only credential here, and deliberately so. It does
+    /// not expire, which matters because a vendor whose substrate cannot
+    /// rewrite a running machine's environment freezes whatever this carried at
+    /// create time. Anything with a lifetime — a GitHub token, bundle access —
+    /// is fetched by the runtime against that token instead.
+    env: Vec<EnvVar>,
+}
+
+// --- Requests (server -> vendor) ────────────────────────────────────────────
+
+struct CreateRuntimeRequest { runtime_id: String, spec: RuntimeSpec }
+
+/// Hand back an existing runtime, resuming it if it was hibernated.
+///
+/// Carries the spec because the server is the only durable holder of it. A
+/// vendor that wrote its own copy down would be a second owner of one fact,
+/// and the two would drift the moment a session's environment changed.
+///
+/// Carrying it is *not* permission to provision from nothing. A vendor with no
+/// runtime under this id still fails the request, and the server turns that
+/// into a terminally unrecoverable session rather than silently rebuilding a
+/// workspace the user believes still exists. The spec is how to rebuild a
+/// runtime the vendor knows it owns — never how to invent one.
+///
+/// A get issued while a create for the same id is in flight must wait for that
+/// create to resolve, and concurrent gets must never yield two runtimes.
+struct GetRuntimeRequest { runtime_id: String, spec: RuntimeSpec }
+
+/// Advisory: suspend this runtime if you can. A vendor that cannot suspend
+/// does nothing and keeps the runtime alive — that is a correct
+/// implementation, and far better than destroying a workspace.
+struct HibernateRuntimeRequest { runtime_id: String }
+
+/// The owning session was deleted; the vendor decides the runtime's fate.
+struct DeleteRuntimeRequest { runtime_id: String }
+
+/// Asked on reconnect so the server can reconcile what survived.
+struct QueryRuntimesRequest {}
+
+/// The handshake was accepted: this agent is published under the name it
+/// announced, and sessions may select it from now on.
+struct VendorRegistered {}
+
+/// The handshake was refused, and no retry can change that. The only reason
+/// today is a name already held by another agent; `reason` is written for the
+/// human who launched the agent and never names the holder, who may be someone
+/// else entirely.
+struct VendorRejected { reason: String }
+
+/// The runtime protocol, addressed to one of this vendor's runtimes and
+/// forwarded verbatim. Tool calls, cancels, workspace scans, and session-start
+/// hooks all travel this way, so adding a runtime capability needs no change
+/// here at all.
+///
+/// A relayed `CancelCall` draws no response, exactly as in `runtime.fl`.
+struct RuntimeRelayRequest { runtime_id: String, message: RuntimeInboundMessage }
+
+#[type_tag = "type"]
+union RuntimeVendorCommand {
+    CreateRuntime(CreateRuntimeRequest),
+    GetRuntime(GetRuntimeRequest),
+    HibernateRuntime(HibernateRuntimeRequest),
+    DeleteRuntime(DeleteRuntimeRequest),
+    QueryRuntimes(QueryRuntimesRequest),
+    Runtime(RuntimeRelayRequest),
+    VendorRegistered(VendorRegistered),
+    VendorRejected(VendorRejected),
+}
+
+struct RuntimeVendorInboundMessage { request_id: String, command: RuntimeVendorCommand }
+
+// --- Responses (vendor -> server, correlated by request_id) ─────────────────
+
+struct CreateRuntimeResponse { runtime_id: String }
+struct GetRuntimeResponse { runtime_id: String }
+struct HibernateRuntimeResponse { runtime_id: String }
+struct DeleteRuntimeResponse { runtime_id: String }
+struct QueryRuntimesResponse { runtimes: Vec<RuntimeInfo> }
+
+/// A runtime's own reply, forwarded verbatim.
+///
+/// The union permits `Ready` because it wraps `RuntimeOutboundMessage` whole,
+/// but it never crosses this link in practice: it arrives during a runtime's
+/// dial-back handshake, before any request has been relayed, and the vendor
+/// consumes it itself.
+struct RuntimeRelayResponse { runtime_id: String, message: RuntimeOutboundMessage }
+
+/// The failure reply to any request. Carries no runtime id — the `request_id`
+/// on the envelope already identifies what failed.
+struct RequestFailed { message: String }
+
+// --- Announcements (vendor -> server, unsolicited) ──────────────────────────
+
+/// First message a vendor sends, mirroring `RuntimeReady`. `vendor_name` is
+/// the name sessions select by.
+///
+/// `instance_id` identifies the *process*, not the vendor: one value generated
+/// at startup and repeated on every reconnect. It exists so the server can tell
+/// an agent reclaiming its own name after a dropped socket from a second agent
+/// trying to take that name over, and it is used for nothing else — a vendor is
+/// addressed by name everywhere else in the system.
+struct RuntimeVendorReady {
+    vendor_name: String,
+    instance_id: String,
+    capabilities: RuntimeVendorCapabilities,
+}
+
+/// A runtime changed state on its own — it died, or finished stopping.
+///
+/// Distinct from the lifecycle responses above, which answer something the
+/// server asked for. This one arrives unbidden, and is the server's only
+/// warning that a runtime is gone while its vendor is still connected.
+struct RuntimeStateChanged { runtime_id: String, state: RuntimeState }
+
+#[type_tag = "type"]
+union RuntimeVendorEvent {
+    Ready(RuntimeVendorReady),
+    CreateRuntime(CreateRuntimeResponse),
+    GetRuntime(GetRuntimeResponse),
+    HibernateRuntime(HibernateRuntimeResponse),
+    DeleteRuntime(DeleteRuntimeResponse),
+    QueryRuntimes(QueryRuntimesResponse),
+    Runtime(RuntimeRelayResponse),
+    RequestFailed(RequestFailed),
+    RuntimeStateChanged(RuntimeStateChanged),
+}
+
+/// request_id echoes the request's for responses; a fresh UUID for
+/// unsolicited announcements (`Ready`, `RuntimeStateChanged`).
+struct RuntimeVendorOutboundMessage { request_id: String, event: RuntimeVendorEvent }
+
+// --- Configured vendors (settings API) ──────────────────────────────────────
+//
+// The types above describe a vendor that dials *in*. These describe one
+// configured in settings, which has nowhere to dial in from: its stored
+// configuration is the only evidence it exists.
+
+/// How a Fly Machines vendor builds machines.
+struct FlyVendorSettings {
+    /// The Fly app machines are created in. Must already exist — the server
+    /// creates machines, not apps.
+    app: String,
+    /// OCI image with `horsie-runtime` baked in.
+    image: String,
+    region: String,
+    /// Where in the machine workspaces are allocated.
+    workspace_root: String,
+    /// The `ws://`/`wss://` URL a machine reaches this server on, including the
+    /// connect path — a URL with no path is refused rather than completed, so
+    /// what is stored is always what was sent. An address that only resolves on
+    /// the server's own loopback is refused too: a machine could never reach
+    /// it, and the failure would otherwise surface as an unexplained session
+    /// timeout.
+    callback_url: String,
+    /// Give each runtime a volume, so a stopped one keeps its workspace.
+    volumes: bool,
+    cpu_kind: String,
+    cpus: u32,
+    memory_mb: u32,
+    volume_size_gb: u32,
+}
+
+/// How a velos vendor schedules containers.
+struct VelosVendorSettings {
+    /// The velos server root, e.g. `http://velos:8080`.
+    server_url: String,
+    /// OCI image bundling `horsie-runtime`, built without the sandbox feature —
+    /// the container is already the isolation boundary.
+    image: String,
+    /// Path to `horsie-runtime` inside the image.
+    runtime_bin: String,
+    /// Where in the container workspaces are allocated.
+    workspace_root: String,
+    /// The `ws://` URL a container reaches this server on, *from velos's
+    /// container network* — not necessarily the address a browser uses.
+    /// Includes the connect path, as on a Fly vendor.
+    callback_url: String,
+    cpu: u32,
+    memory_mb: u32,
+}
+
+/// Per-kind settings. A union rather than a kind string plus optional structs,
+/// so a client cannot describe a vendor that has no settings — or two kinds'
+/// worth.
+///
+/// Adding a kind is a variant here plus a match arm on the server. What each
+/// substrate can do — Fly keeps a workspace across a hibernate, velos rebuilds
+/// it — stays inside its implementation and never reaches this type.
+#[type_tag = "kind"]
+union RuntimeVendorSettings {
+    Fly(FlyVendorSettings),
+    Velos(VelosVendorSettings),
+}
+
+/// A configured runtime vendor as shown to clients.
+struct RuntimeVendorConfigView {
+    /// The name sessions select by. Exclusive with the names dialled-in vendor
+    /// agents announce.
+    name: String,
+    settings: RuntimeVendorSettings,
+    /// Whether a credential is stored. The token itself never leaves the
+    /// server — a settings page that could read one back turns every session
+    /// cookie into a credential exfiltration path.
+    has_credential: bool,
+    /// Unix epoch seconds.
+    created_at: String,
+    updated_at: String,
+}
+
+/// What a cheap read-only call against a vendor's substrate said.
+///
+/// A save already makes this call and refuses a configuration the substrate
+/// rejects, so this type answers a different question: is the vendor usable
+/// *now*. A credential revoked after it was stored is invisible until someone
+/// asks, and the answer is deliberately not recorded — it would be a claim
+/// about a remote system that can stop being true a second later.
+///
+/// A failure is `ok: false` with a message, never an HTTP error: the request
+/// succeeded, and what failed is the thing it went to find out about.
+struct RuntimeVendorTestResult {
+    ok: bool,
+    error: Option<String>,
+}
+
+/// Create or fully replace a configured runtime vendor.
+struct RuntimeVendorConfigInput {
+    name: String,
+    settings: RuntimeVendorSettings,
+    /// Omit to keep the stored token. Required when creating.
+    credential: Option<String>,
+}
