@@ -56,6 +56,10 @@ export function Markdown({ children }: { children: string }) {
         // message is small — the list above it is what is long.
         initialNumToRender: undefined,
         scrollEnabled: false,
+        // Both, not just the content container: the list's own view carries
+        // the theme background, which paints a black slab inside whatever card
+        // the prose sits in.
+        style: { backgroundColor: "transparent" },
         contentContainerStyle: { backgroundColor: "transparent" },
       }}
       styles={styles}

@@ -42,12 +42,17 @@ async function writeServers(servers: ServerRecord[]): Promise<void> {
   await SecureStore.setItemAsync(SERVERS_KEY, JSON.stringify(servers));
 }
 
+/**
+ * Add or update a server, and make it the most recent.
+ *
+ * Order is meaningful: boot resumes `listServers()[0]`, so "first added" would
+ * mean a second sign-in resumed the *older* server — with whatever project and
+ * credentials it happened to have — while the app said it was connected to the
+ * new one.
+ */
 export async function upsertServer(server: ServerRecord): Promise<void> {
-  const servers = await listServers();
-  const at = servers.findIndex((s) => s.id === server.id);
-  if (at >= 0) servers[at] = server;
-  else servers.push(server);
-  await writeServers(servers);
+  const rest = (await listServers()).filter((s) => s.id !== server.id);
+  await writeServers([server, ...rest]);
 }
 
 /** Forget a server and its credentials. */
