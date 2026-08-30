@@ -29,6 +29,20 @@ Everything under `src/generated/` comes from horsie's `.fl` schemas via fluorite
 
 To move to a newer horsie: change the SHA in `schemas/HORSIE_REF`, then `npm run sync-schemas && npm run generate-types`.
 
+## Building the iOS app locally
+
+`npm run ios` uses Expo Go, which is enough for everything except screenshots — it overlays a dev-menu sheet you cannot dismiss from a script.
+
+A native dev client (`npx expo run:ios`) needs **Xcode 26.4 or newer**. On an older one the build dies inside `expo-modules-jsi` with
+
+```
+RuntimeScheduler.h: error: 'RuntimeScheduler' cannot be annotated with either
+SWIFT_RETURNS_RETAINED or SWIFT_RETURNS_UNRETAINED because it is not returning
+a SWIFT_SHARED_REFERENCE type
+```
+
+which names a header rather than a toolchain, so it reads like an Expo bug and is not one — SDK 56 already raised the floor to Xcode 26.4 / Swift 6.3. Do not patch the header; Expo's maintainers reject that workaround because it hides the cause and breaks differently on CI. Upgrade Xcode.
+
 ## Where logic goes
 
 `src/core/` holds the parts with no React and no React Native in them — the transcript fold, the graph layout, the hook helpers. Most of it is carried over from horsie's web client so the two cannot drift, and it is where the unit tests are. If a change can live there, it should.
