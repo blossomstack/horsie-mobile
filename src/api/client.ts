@@ -173,11 +173,6 @@ export const api = {
     markRead: (ids: string[]): Promise<Ack> =>
       scoped("/inbox/read", post({ ids } satisfies InboxMessageIds)),
 
-    /** Remove messages. The server declines any question still holding an
-     * agent first, so nothing is left parked with its row gone. */
-    remove: (ids: string[]): Promise<Ack> =>
-      scoped("/inbox/delete", post({ ids } satisfies InboxMessageIds)),
-
     /** Answer a parked question, or say something to the agent behind a
      * notice. The message's own kind decides which. */
     reply: (id: string, text: string): Promise<Ack> =>

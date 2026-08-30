@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { api } from "@/api/client";
@@ -26,6 +26,16 @@ export default function MessageScreen() {
 
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // Opening it is what makes it read. Once per mount — the list refetches on
+  // the session feed, so re-running this on every refetch would POST on a
+  // timer for as long as the screen is open.
+  const marked = useRef(false);
+  useEffect(() => {
+    if (!message || message.readAt !== undefined || marked.current) return;
+    marked.current = true;
+    void api.inbox.markRead([message.id]).then(() => invalidate());
+  }, [message, invalidate]);
 
   if (isLoading) return <Loading />;
   if (isError) return <ReadError error={error} onRetry={() => void refetch()} />;
