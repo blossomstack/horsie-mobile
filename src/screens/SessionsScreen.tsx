@@ -48,18 +48,22 @@ export default function SessionsScreen() {
   // here rather than in the navigator because only this screen knows the
   // action, and the navigator would have to learn one screen's business to
   // render it.
+  //
+  // A real bar button item rather than a React view: from iOS 26 UIKit gives
+  // anything in a bar a glass capsule, and our own filled circle inside that
+  // capsule was one background too many.
   useLayoutEffect(() => {
     if (!isIOS) return;
     navigation.setOptions({
-      headerRight: () => (
-        <IconButton
-          accessibilityLabel="New session"
-          fill="keycap"
-          onPress={() => navigation.navigate("NewSession")}
-        >
-          <Plus size={22} color={c.accent} />
-        </IconButton>
-      ),
+      unstable_headerRightItems: () => [
+        {
+          type: "button",
+          label: "New session",
+          icon: { type: "sfSymbol", name: "plus" },
+          tintColor: c.accent,
+          onPress: () => navigation.navigate("NewSession"),
+        },
+      ],
     });
   }, [navigation, c.accent]);
 

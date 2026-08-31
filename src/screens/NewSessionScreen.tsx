@@ -22,7 +22,6 @@ import {
   Row,
   SectionHeader,
   Separator,
-  TextAction,
 } from "@/components/ui";
 import { AttachmentTray } from "@/components/attachments/AttachmentTray";
 import { useAttachments } from "@/hooks/useAttachments";
@@ -117,25 +116,38 @@ export default function NewSessionScreen() {
 
   // iOS puts both verbs in the nav bar; Android pins Start in a footer and
   // leaves cancelling to the back arrow, which is what it means there.
+  //
+  // Real bar button items, not React views in the bar: from iOS 26 UIKit wraps
+  // whatever sits in a bar in a glass capsule, and a capsule drawn around a
+  // view that never expected one is a blob clipped by the screen edge. A
+  // native item is measured by the thing drawing the capsule.
   useLayoutEffect(() => {
     if (!isIOS) return;
     navigation.setOptions({
-      headerLeft: () => (
-        <TextAction label="Cancel" onPress={() => navigation.goBack()} />
-      ),
-      headerRight: () => (
-        <TextAction
-          label="Start"
-          role="headline"
-          disabled={!ready || busy}
-          onPress={() => void create()}
-        />
-      ),
+      unstable_headerLeftItems: () => [
+        {
+          type: "button",
+          label: "Cancel",
+          tintColor: c.accent,
+          onPress: () => navigation.goBack(),
+        },
+      ],
+      unstable_headerRightItems: () => [
+        {
+          type: "button",
+          label: "Start",
+          // UIKit's own weight for the affirmative verb in a pair.
+          variant: "done",
+          tintColor: c.accent,
+          disabled: !ready || busy,
+          onPress: () => void create(),
+        },
+      ],
     });
     // `create` closes over the draft, so it is rebuilt on every keystroke;
     // depending on it would reset the header just as often for no change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigation, ready, busy]);
+  }, [navigation, ready, busy, c.accent]);
 
   if (agents.isLoading || environments.isLoading || runtimes.isLoading) {
     return <Loading />;
