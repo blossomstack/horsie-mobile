@@ -66,7 +66,14 @@ function UserTurn({ msg }: { msg: RenderedMessage }) {
     <View
       style={{
         alignSelf: "flex-end",
-        maxWidth: "88%",
+        // A column of words shrinks to the words. A column with a picture in
+        // it must not: an image asks for a share of its parent, and a parent
+        // measured from the sentence beside it hands out a share of *that* —
+        // so the same photo came out full width under a sentence and a sliver
+        // under a one-letter message.
+        ...(msg.artifacts.length > 0
+          ? { width: "88%" }
+          : { maxWidth: "88%" }),
         gap: space.sm,
         // A message the server has not confirmed yet is dimmed rather than
         // hidden: it was typed, and pretending otherwise loses it.
@@ -80,6 +87,8 @@ function UserTurn({ msg }: { msg: RenderedMessage }) {
           // mean "the agent needs you"; M3 tints what the person said, which
           // is its own convention and the reason for the notched corner.
           style={{
+            // Still hugs its text even when the column above is a fixed width.
+            alignSelf: "flex-end",
             backgroundColor: isIOS ? c.panelRaised : c.accentQuiet,
             borderRadius: 20,
             borderBottomRightRadius: isIOS ? 20 : 4,
