@@ -11,6 +11,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { GitFork, Send } from "lucide-react-native";
 import { MAIN_AGENT, api } from "@/api/client";
 import { Body, Card, Loading, Mono, ReadError } from "@/components/ui";
+import { SessionGraph } from "@/components/SessionGraph";
 import { TranscriptRow } from "@/components/transcript/Item";
 import { Tasks } from "@/components/transcript/Tasks";
 import { groupTurns, type TurnGroup } from "@/core/segments";
@@ -26,13 +27,81 @@ import type { RootStackParamList } from "@/navigation/routes";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
+/**
+ * A session, or one agent inside it.
+ *
+ * Which of the two pictures this is comes from the session itself, so the
+ * decision is made here and the transcript below is only ever mounted when
+ * there is one to read: a workflow run has no transcript at all, and mounting
+ * the stream to find that out subscribes to a log that will never have an
+ * entry.
+ */
 export default function SessionScreen() {
   const { id, agent } = useRoute<RouteProp<RootStackParamList, "Session">>().params;
   const navigation = useNavigation<Nav>();
   const c = useColors();
-  const agentId = agent ?? MAIN_AGENT;
 
   const session = useSession(id);
+  const detail = session.data?.session;
+
+  // A run *is* its steps — there is no main agent and nothing ever wrote to its
+  // log — so its page is the graph, exactly as on the web. Drawn as a
+  // transcript it was a blank screen with a composer nobody was listening at.
+  const isRun = detail?.workflow !== undefined && agent === undefined;
+
+  // Whose transcript this is, when it is not the session's own. Every step of a
+  // run is a page titled from the same session, so without this the four
+  // screens you reach from a run's graph all read "triage-flow".
+  const title =
+    agent === undefined
+      ? detail?.name
+      : (detail?.agents.find((a) => a.id === agent)?.title ??
+        detail?.subSessions.find((sub) => sub.id === agent)?.title ??
+        detail?.name);
+
+  useEffect(() => {
+    navigation.setOptions({
+      title: title ?? "Session",
+      // Nothing to reach: the graph is already what you are looking at.
+      headerRight: isRun
+        ? undefined
+        : () => (
+            <GitFork
+              size={20}
+              color={c.legendDim}
+              onPress={() => navigation.navigate("Graph", { id })}
+            />
+          ),
+    });
+  }, [navigation, title, c.legendDim, id, isRun]);
+
+  if (!detail && session.isLoading) return <Loading />;
+  if (!detail && session.isError) {
+    return <ReadError error={session.error} onRetry={() => void session.refetch()} />;
+  }
+  if (isRun) return <SessionGraph id={id} />;
+
+  return (
+    <Transcript
+      id={id}
+      agentId={agent ?? MAIN_AGENT}
+      // A workflow step works from its definition, not from messages. It has a
+      // transcript worth reading and nothing that would read a reply.
+      takesMessages={detail?.workflow === undefined}
+    />
+  );
+}
+
+function Transcript({
+  id,
+  agentId,
+  takesMessages,
+}: {
+  id: string;
+  agentId: string;
+  takesMessages: boolean;
+}) {
+  const c = useColors();
   const { stream, addOptimisticUser, removeOptimisticUser, ackOptimisticUser, loadMore } =
     useSessionStream(id, agentId);
   const [draft, setDraft] = useState("");
@@ -83,24 +152,6 @@ export default function SessionScreen() {
     },
     [id, agentId],
   );
-
-  useEffect(() => {
-    navigation.setOptions({
-      title: session.data?.session.name ?? "Session",
-      headerRight: () => (
-        <GitFork
-          size={20}
-          color={c.legendDim}
-          onPress={() => navigation.navigate("Graph", { id })}
-        />
-      ),
-    });
-  }, [navigation, session.data?.session.name, c.legendDim, id]);
-
-  if (session.isLoading && stream.items.length === 0) return <Loading />;
-  if (session.isError && stream.items.length === 0) {
-    return <ReadError error={session.error} onRetry={() => void session.refetch()} />;
-  }
 
   return (
     <>
@@ -161,31 +212,42 @@ export default function SessionScreen() {
             alignItems: "flex-end",
           }}
         >
-          <TextInput
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="Say something"
-            placeholderTextColor={c.legendFaint}
-            multiline
-            style={{
-              flex: 1,
-              maxHeight: 120,
-              backgroundColor: c.panel,
-              borderRadius: radii.md,
-              borderWidth: 1,
-              borderColor: c.edge,
-              paddingHorizontal: space.md,
-              paddingVertical: space.sm,
-              color: c.legend,
-              fontSize: text.base,
-            }}
-          />
-          <Send
-            size={22}
-            color={draft.trim() && !sending ? c.accent : c.legendFaint}
-            onPress={send}
-            style={{ marginBottom: space.sm }}
-          />
+          {takesMessages ? (
+            <>
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                placeholder="Say something"
+                placeholderTextColor={c.legendFaint}
+                multiline
+                style={{
+                  flex: 1,
+                  maxHeight: 120,
+                  backgroundColor: c.panel,
+                  borderRadius: radii.md,
+                  borderWidth: 1,
+                  borderColor: c.edge,
+                  paddingHorizontal: space.md,
+                  paddingVertical: space.sm,
+                  color: c.legend,
+                  fontSize: text.base,
+                }}
+              />
+              <Send
+                size={22}
+                color={draft.trim() && !sending ? c.accent : c.legendFaint}
+                onPress={send}
+                style={{ marginBottom: space.sm }}
+              />
+            </>
+          ) : (
+            // Said rather than disabled: a greyed-out box reads as "not yet",
+            // and this one is never going to accept anything.
+            <Body size="xs" tone="faint" style={{ flex: 1, paddingVertical: space.sm }}>
+              This is a workflow step. It works from its definition, not from
+              messages.
+            </Body>
+          )}
         </View>
       </KeyboardAvoidingView>
     </>

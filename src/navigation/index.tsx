@@ -27,6 +27,7 @@ import WorkflowsScreen from "@/screens/WorkflowsScreen";
 import WorkflowsDetailScreen from "@/screens/WorkflowsDetailScreen";
 import RoutinesScreen from "@/screens/RoutinesScreen";
 import RoutinesDetailScreen from "@/screens/RoutinesDetailScreen";
+import SettingsAppearanceScreen from "@/screens/SettingsAppearanceScreen";
 import SettingsProjectsScreen from "@/screens/SettingsProjectsScreen";
 import SettingsModelsScreen from "@/screens/SettingsModelsScreen";
 import SettingsRuntimesScreen from "@/screens/SettingsRuntimesScreen";
@@ -160,6 +161,7 @@ export function Navigation() {
             <Stack.Screen name="WorkflowDetail" component={WorkflowsDetailScreen} />
             <Stack.Screen name="Routines" component={RoutinesScreen} options={{ title: "Routines" }} />
             <Stack.Screen name="RoutineDetail" component={RoutinesDetailScreen} />
+            <Stack.Screen name="SettingsAppearance" component={SettingsAppearanceScreen} options={{ title: "Appearance" }} />
             <Stack.Screen name="SettingsProjects" component={SettingsProjectsScreen} options={{ title: "Projects" }} />
             <Stack.Screen name="SettingsModels" component={SettingsModelsScreen} options={{ title: "Models" }} />
             <Stack.Screen name="SettingsRuntimes" component={SettingsRuntimesScreen} options={{ title: "Runtimes" }} />

@@ -7,29 +7,31 @@ import {
   FolderTree,
   LogOut,
   Package,
+  Palette,
   Plug,
   Server,
   Sparkles,
 } from "lucide-react-native";
 import { Body, Card, Mono, Row } from "@/components/ui";
 import { useConnection } from "@/state/connection";
-import { radii, space, useColors, useTheme, type ThemeChoice } from "@/theme";
+import { space, SKINS, useColors, useTheme, type ThemeChoice } from "@/theme";
 
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/routes";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-const CHOICES: { key: ThemeChoice; label: string }[] = [
-  { key: "system", label: "System" },
-  { key: "light", label: "Light" },
-  { key: "dark", label: "Dark" },
-];
+/** What each exposure is called on the row that summarises it. */
+const CHOICE_LABEL: Record<ThemeChoice, string> = {
+  system: "System",
+  light: "Light",
+  dark: "Dark",
+};
 
 export default function SettingsScreen() {
   const navigation = useNavigation<Nav>();
   const c = useColors();
-  const { choice, setChoice } = useTheme();
+  const { choice, skin } = useTheme();
   const { server, project, signOut } = useConnection();
 
   const readOnly = [
@@ -65,33 +67,21 @@ export default function SettingsScreen() {
         </Card>
       </Section>
 
-      <Section title="Appearance">
-        <View style={{ flexDirection: "row", gap: space.sm }}>
-          {CHOICES.map((t) => {
-            const on = t.key === choice;
-            return (
-              <View
-                key={t.key}
-                style={{
-                  flex: 1,
-                  borderRadius: radii.md,
-                  overflow: "hidden",
-                  backgroundColor: on ? c.accentQuiet : c.keycap,
-                }}
-              >
-                <Row first onPress={() => setChoice(t.key)}>
-                  <Body
-                    weight="600"
-                    tone={on ? "accent" : "dim"}
-                    style={{ textAlign: "center" }}
-                  >
-                    {t.label}
-                  </Body>
-                </Row>
-              </View>
-            );
-          })}
-        </View>
+      {/* Separate from Configuration below, which is the server's and read
+          only. This is the one thing on this screen the phone itself owns. */}
+      <Section title="This device">
+        <Card>
+          <Row first onPress={() => navigation.push("SettingsAppearance")}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
+              <Palette size={18} color={c.legendDim} />
+              <Body style={{ flex: 1 }}>Appearance</Body>
+              <Body tone="dim">
+                {`${CHOICE_LABEL[choice]} · ${SKINS.find((s) => s.key === skin)?.label ?? skin}`}
+              </Body>
+              <ChevronRight size={18} color={c.legendFaint} />
+            </View>
+          </Row>
+        </Card>
       </Section>
 
       <Section title="Configuration">
