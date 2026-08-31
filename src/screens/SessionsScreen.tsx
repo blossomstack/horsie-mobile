@@ -1,11 +1,12 @@
-import { useMemo } from "react";
-import { FlatList, RefreshControl, View , Pressable } from "react-native";
+import { useCallback, useMemo } from "react";
+import { Alert, FlatList, RefreshControl, View , Pressable } from "react-native";
+import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import { useNavigation } from "@react-navigation/native";
-import { CornerDownRight, Plus } from "lucide-react-native";
+import { CornerDownRight, Plus, Trash2 } from "lucide-react-native";
 import { SessionStatusKind } from "@/api/types";
 import { Body, Card, Empty, Loading, Pill, ReadError, Row } from "@/components/ui";
 import { usePullRefresh } from "@/hooks/usePullRefresh";
-import { useSessionFeed, useSessions } from "@/hooks/useSessions";
+import { useDeleteSession, useSessionFeed, useSessions } from "@/hooks/useSessions";
 import { flattenSessions, type SessionRow } from "@/lib/sessionTree";
 import { relativeTime } from "@/lib/time";
 import { radii, space, useColors } from "@/theme";
@@ -20,9 +21,38 @@ export default function SessionsScreen() {
   const c = useColors();
   const { data, isLoading, isError, error, refetch } = useSessions();
   const pull = usePullRefresh(refetch);
+  const remove = useDeleteSession();
   useSessionFeed();
 
   const rows = useMemo(() => flattenSessions(data?.sessions ?? []), [data]);
+
+  // Asked before it happens, because there is no undo: the server drops the
+  // session and its whole transcript, and a swipe is far too easy to make by
+  // accident on a list you are scrolling.
+  const confirmDelete = useCallback(
+    (row: SessionRow) => {
+      Alert.alert(
+        "Delete this session?",
+        `"${row.title}" and everything it recorded will be gone. This cannot be undone.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () =>
+              remove.mutate(row.sessionId, {
+                onError: (e) =>
+                  Alert.alert(
+                    "Could not delete it",
+                    e instanceof Error ? e.message : "The server refused.",
+                  ),
+              }),
+          },
+        ],
+      );
+    },
+    [remove],
+  );
 
   if (isLoading) return <Loading />;
   if (isError) return <ReadError error={error} onRetry={() => void refetch()} />;
@@ -39,20 +69,41 @@ export default function SessionsScreen() {
         ListEmptyComponent={
           <Empty title="No sessions" detail="Start one with the button below." />
         }
-        renderItem={({ item, index }) => (
-          <Card
-            style={{
-              marginTop: item.depth === 0 && index > 0 ? space.sm : 0,
-              marginLeft: item.depth * space.lg,
-              // A sub session is part of the session above it, so it shares
-              // that card's outline rather than starting a new one.
-              borderTopLeftRadius: item.depth ? 0 : radii.lg,
-              borderTopRightRadius: item.depth ? 0 : radii.lg,
-            }}
-          >
-            <SessionListRow row={item} />
-          </Card>
-        )}
+        renderItem={({ item, index }) => {
+          const card = (
+            <Card
+              style={{
+                marginTop: item.depth === 0 && index > 0 ? space.sm : 0,
+                marginLeft: item.depth * space.lg,
+                // A sub session is part of the session above it, so it shares
+                // that card's outline rather than starting a new one.
+                borderTopLeftRadius: item.depth ? 0 : radii.lg,
+                borderTopRightRadius: item.depth ? 0 : radii.lg,
+              }}
+            >
+              <SessionListRow row={item} />
+            </Card>
+          );
+          // Only whole sessions. A sub session row is addressed by its parent
+          // session's id plus its own agent id, so a delete swiped on one
+          // would take the parent and every other branch with it.
+          if (item.depth > 0) return card;
+          return (
+            <Swipeable
+              friction={2}
+              rightThreshold={40}
+              overshootRight={false}
+              renderRightActions={() => (
+                <DeleteAction
+                  offsetTop={index > 0 ? space.sm : 0}
+                  onPress={() => confirmDelete(item)}
+                />
+              )}
+            >
+              {card}
+            </Swipeable>
+          );
+        }}
       />
 
       <Pressable
@@ -73,6 +124,47 @@ export default function SessionsScreen() {
         <Plus size={26} color={c.accentInk} />
       </Pressable>
     </View>
+  );
+}
+
+/** What a swipe uncovers. Deliberately one action and deliberately loud: it is
+ * the only irreversible thing this app can do. */
+function DeleteAction({
+  offsetTop,
+  onPress,
+}: {
+  offsetTop: number;
+  onPress: () => void;
+}) {
+  const c = useColors();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel="Delete session"
+      style={({ pressed }) => ({
+        width: 76,
+        marginTop: offsetTop,
+        marginLeft: space.sm,
+        borderRadius: radii.lg,
+        // The palette has no ink-on-red, so this is the pair it does define —
+        // the same one the transcript's error banner uses — with the strong
+        // red kept as an outline so the panel reads as an action rather than
+        // as a notice.
+        backgroundColor: c.redQuiet,
+        borderWidth: 1,
+        borderColor: c.red,
+        alignItems: "center",
+        justifyContent: "center",
+        gap: space.xs,
+        opacity: pressed ? 0.8 : 1,
+      })}
+    >
+      <Trash2 size={18} color={c.redInk} />
+      <Body size="xs" tone="danger" weight="600">
+        Delete
+      </Body>
+    </Pressable>
   );
 }
 
