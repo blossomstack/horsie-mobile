@@ -48,3 +48,6 @@ android/build/
 android/local.properties
 *.hprof
 .cxx/
+
+# agent worktrees
+.claude/

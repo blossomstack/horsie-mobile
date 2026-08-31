@@ -46,9 +46,21 @@ npm run check:schemas    # both, then fail on any diff — this runs in CI
 
 To move to a newer horsie, change the SHA in `schemas/HORSIE_REF` and run the first two.
 
-## Shipping
+## TestFlight
 
-Release builds are not wired up yet. Archiving from Xcode works today; a signed pipeline needs Apple credentials that only a human can produce, and it is tracked rather than stubbed.
+`scripts/testflight.sh` archives, signs and uploads in one go. Signing is cloud-managed — Xcode mints the certificate and provisioning profile through the App Store Connect API, so nothing is checked in or installed by hand. Put an API key in the environment first:
+
+| Variable | What |
+| --- | --- |
+| `ASC_KEY_ID` | App Store Connect API key ID |
+| `ASC_ISSUER_ID` | that key's issuer ID |
+| `ASC_PRIVATE_KEY` | the `.p8` private key, full PEM contents |
+| `ASC_TEAM_ID` | Apple Developer team ID |
+| `BUILD_KEYCHAIN_PASSWORD` | password for the keychain the build signs in |
+
+The key is written only inside a `mktemp` dir and removed on exit. The build runs in its own keychain rather than the login one, which would be locked in a non-interactive shell; the script restores your keychain setup on exit however it ends.
+
+App Store Connect assigns the build number at upload. Bump `MARKETING_VERSION` in the Xcode project for a new user-visible version.
 
 ## Licence
 
