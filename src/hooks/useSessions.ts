@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { AppState } from "react-native";
 import EventSource from "react-native-sse";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { authHeaders, scopedUrl } from "@/api/connection";
 import { useConnection } from "@/state/connection";
@@ -24,6 +24,23 @@ export function useSession(id: string) {
     queryKey: ["session", project, id],
     queryFn: () => api.sessions.get(id),
     enabled: project !== null,
+  });
+}
+
+/**
+ * Delete a session and everything it recorded.
+ *
+ * The list is dropped rather than patched. The feed publishes a whole new one
+ * the moment the server has done the work, and inventing a list with the row
+ * taken out would be a second, disagreeing account of what the session list is
+ * — the exact thing the feed exists to avoid.
+ */
+export function useDeleteSession() {
+  const client = useQueryClient();
+  const { project } = useConnection();
+  return useMutation({
+    mutationFn: (id: string) => api.sessions.delete(id),
+    onSuccess: () => client.invalidateQueries({ queryKey: sessionsKey(project) }),
   });
 }
 

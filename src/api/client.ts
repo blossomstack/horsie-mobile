@@ -60,9 +60,10 @@ export type InboxScope = "all" | "open" | "unread";
  * The endpoints this app uses.
  *
  * Read-mostly by design: the writes are answering a parked agent, saying
- * something to a running one, and starting a session. Everything else the
- * server exposes is deliberately absent rather than present-but-unused —
- * a mutation with no screen behind it is a liability, not a feature.
+ * something to a running one, starting a session and deleting one. Everything
+ * else the server exposes is deliberately absent rather than
+ * present-but-unused — a mutation with no screen behind it is a liability, not
+ * a feature.
  */
 export const api = {
   /** Liveness, and the one call made before a server is trusted enough to
@@ -157,6 +158,11 @@ export const api = {
         `/sessions/${encodeURIComponent(id)}/answers?aid=${encodeURIComponent(agentId)}`,
         post({ answers }),
       ),
+
+    /** Delete a session and everything it recorded. There is no undo on the
+     * server, so every caller has to ask first. */
+    delete: (id: string): Promise<Ack> =>
+      scoped(`/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
     /** The run graph behind a session that is a workflow run. */
     workflowRun: (id: string): Promise<WorkflowRunGraph> =>
