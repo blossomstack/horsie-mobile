@@ -12,14 +12,11 @@ import { CircleHelp, GitFork } from "lucide-react-native";
 import { MAIN_AGENT, api } from "@/api/client";
 import { Body, Card, Loading, Mono, ReadError } from "@/components/ui";
 import {
-  AttachButtons,
+  AttachButton,
   Composer,
   ComposerNotice,
 } from "@/components/transcript/Composer";
-import {
-  AttachSheet,
-  openAttachSheet,
-} from "@/components/attachments/AttachSheet";
+import { AttachSheet } from "@/components/attachments/AttachSheet";
 import { AttachmentTray } from "@/components/attachments/AttachmentTray";
 import { useAttachments } from "@/hooks/useAttachments";
 import { SessionGraph } from "@/components/SessionGraph";
@@ -238,14 +235,7 @@ function Transcript({
               draft.trim().length > 0 && !sending && attachments.settled
             }
             leading={
-              <AttachButtons
-                onAttach={() =>
-                  isIOS
-                    ? openAttachSheet((source) => void attachments.pick(source))
-                    : setSheetOpen(true)
-                }
-                onCamera={() => void attachments.pick("camera")}
-              />
+              <AttachButton onPress={() => setSheetOpen(true)} />
             }
             above={
               <AttachmentTray
