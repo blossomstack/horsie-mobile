@@ -1,48 +1,36 @@
 import { StyleSheet, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Camera, Paperclip, Plus, Send } from "lucide-react-native";
+import { Paperclip, Plus, Send } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { Body, IconButton } from "@/components/ui";
 import { isIOS, radii, space, touchTarget, typeRamp, useColors } from "@/theme";
 
 /**
- * The two attachment buttons, placed the way each platform places them.
+ * The attachment button, placed the way each platform places it.
  *
- * iOS puts them outside the field as tinted circles; M3 puts them inside it at
- * the trailing edge. Both are bumped to the platform's minimum target — the
- * mock draws them at 38pt, and 38pt is a miss.
+ * iOS puts it outside the field as a tinted circle; M3 puts it inside at the
+ * trailing edge. Bumped to the platform's minimum target — the mock draws it
+ * at 38pt, and 38pt is a miss.
+ *
+ * One button, not the mock's two: the picker it opens already offers the
+ * camera, so a second button beside it was a shortcut to a row of the menu it
+ * sits next to.
  */
-export function AttachButtons({
-  onAttach,
-  onCamera,
-}: {
-  onAttach: () => void;
-  onCamera: () => void;
-}) {
+export function AttachButton({ onPress }: { onPress: () => void }) {
   const c = useColors();
   return (
-    <>
-      <IconButton
-        accessibilityLabel="Attach a file"
-        fill={isIOS ? "keycap" : "none"}
-        size={touchTarget}
-        onPress={onAttach}
-      >
-        {isIOS ? (
-          <Plus size={21} color={c.accent} />
-        ) : (
-          <Paperclip size={22} color={c.legendDim} />
-        )}
-      </IconButton>
-      <IconButton
-        accessibilityLabel="Take a photo"
-        fill={isIOS ? "keycap" : "none"}
-        size={touchTarget}
-        onPress={onCamera}
-      >
-        <Camera size={isIOS ? 20 : 22} color={isIOS ? c.accent : c.legendDim} />
-      </IconButton>
-    </>
+    <IconButton
+      accessibilityLabel="Attach a file"
+      fill={isIOS ? "keycap" : "none"}
+      size={touchTarget}
+      onPress={onPress}
+    >
+      {isIOS ? (
+        <Plus size={21} color={c.accent} />
+      ) : (
+        <Paperclip size={22} color={c.legendDim} />
+      )}
+    </IconButton>
   );
 }
 
