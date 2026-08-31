@@ -5,6 +5,7 @@ import { Body, Mono } from "@/components/ui";
 import type { RenderedToolCall } from "@/core/transcript";
 import { duration } from "@/lib/time";
 import { radii, space, useColors } from "@/theme";
+import { Artifacts } from "./Artifacts";
 
 /** How much of a tool result to show before it has to be asked for. */
 const PREVIEW_LINES = 6;
@@ -69,6 +70,12 @@ export function ToolCall({ call, startedAtMs }: { call: RenderedToolCall; starte
       {open ? (
         <View style={{ paddingHorizontal: space.md, paddingBottom: space.md, gap: space.sm }}>
           <Mono size="xs">{JSON.stringify(call.input, null, 2)}</Mono>
+        </View>
+      ) : null}
+
+      {call.artifacts.length > 0 ? (
+        <View style={{ paddingHorizontal: space.md, paddingBottom: space.md }}>
+          <Artifacts items={call.artifacts} />
         </View>
       ) : null}
 

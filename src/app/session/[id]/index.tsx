@@ -12,6 +12,7 @@ import { GitFork, Send } from "lucide-react-native";
 import { MAIN_AGENT, api } from "@/api/client";
 import { Body, Card, Loading, Mono, ReadError } from "@/components/ui";
 import { TranscriptRow } from "@/components/transcript/Item";
+import { Tasks } from "@/components/transcript/Tasks";
 import { useSessionStream } from "@/hooks/useSessionStream";
 import { useSession } from "@/hooks/useSessions";
 import { StatusPill } from "@/app/(tabs)/sessions";
@@ -89,6 +90,7 @@ export default function SessionScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={90}
       >
+        <Tasks tasks={stream.tasks} />
         <StatusBar stream={stream} />
 
         <FlatList
@@ -175,6 +177,25 @@ function keyOf(item: TranscriptItem): string {
 
 function StatusBar({ stream }: { stream: ReturnType<typeof useSessionStream>["stream"] }) {
   const c = useColors();
+  if (!stream.connected && !stream.streamError) {
+    return (
+      <View
+        style={{
+          flexDirection: "row",
+          gap: space.sm,
+          alignItems: "center",
+          backgroundColor: c.keycap,
+          paddingHorizontal: space.lg,
+          paddingVertical: space.sm,
+        }}
+      >
+        <ActivityIndicator size="small" color={c.legendDim} />
+        <Body size="xs" tone="dim">
+          Reconnecting — anything missed is replayed
+        </Body>
+      </View>
+    );
+  }
   if (stream.streamError) {
     return (
       <View style={{ backgroundColor: c.redQuiet, padding: space.md }}>
