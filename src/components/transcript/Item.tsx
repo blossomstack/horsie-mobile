@@ -3,124 +3,90 @@ import { Pressable, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/routes";
-import { Brain, GitBranch, Scissors } from "lucide-react-native";
-import { Body, Card, Mono } from "@/components/ui";
-import type { TranscriptItem } from "@/core/transcript";
+import { GitBranch, Scissors } from "lucide-react-native";
+import { Body, Mono } from "@/components/ui";
+import { buildSegments, type Segment, type TurnGroup } from "@/core/segments";
+import type { RenderedMessage } from "@/core/transcript";
 import { hookLine } from "@/core/hookText";
 import { radii, space, useColors } from "@/theme";
 import { Markdown } from "./Markdown";
 import { Artifacts } from "./Artifacts";
 import { ToolCall } from "./ToolCall";
+import { WorkGroup } from "./WorkGroup";
 
-export function TranscriptRow({ item }: { item: TranscriptItem }) {
-  switch (item.kind) {
-    case "message":
-      return <MessageRow value={item.value} />;
+/**
+ * One entry in the recording.
+ *
+ * A run of assistant messages is one entry, not one per provider call: an
+ * agent's trajectory through nine tools is one continuous piece of work, and
+ * drawing it as nine rows is what buried the answer at the end of it.
+ */
+export function TranscriptRow({
+  turn,
+  live,
+}: {
+  turn: TurnGroup;
+  /** The tail being written right now, when it belongs to this entry. */
+  live?: { text: string };
+}) {
+  switch (turn.kind) {
+    case "user":
+      return <UserTurn msg={turn.msg} />;
+    case "assistant":
+      return <AssistantTurn msgs={turn.msgs} live={live} />;
     case "notice":
-      return <Marker icon="hook" text={hookLine(item.value.record)} />;
+      return <Marker text={hookLine(turn.value.record)} />;
     case "compaction":
       return (
         <Marker
           icon="compaction"
           text={
-            item.value.covered === null
-              ? `Compacted — ${item.value.tokensBefore} → ${item.value.tokensAfter} tokens`
-              : `Compacted ${item.value.covered} entries — ${item.value.tokensBefore} → ${item.value.tokensAfter} tokens`
+            turn.value.covered === null
+              ? `Compacted — ${turn.value.tokensBefore} → ${turn.value.tokensAfter} tokens`
+              : `Compacted ${turn.value.covered} entries — ${turn.value.tokensBefore} → ${turn.value.tokensAfter} tokens`
           }
-          detail={item.value.summary}
+          detail={turn.value.summary}
         />
       );
     case "compaction-skipped":
       return (
         <Marker
           icon="compaction"
-          text={`Nothing to compact — ${item.value.contextTokens} tokens in context`}
+          text={`Nothing to compact — ${turn.value.contextTokens} tokens in context`}
         />
       );
     case "subSession":
-      return <SubSessionMarker id={item.value.id} seed={item.value.seed} />;
+      return <SubSessionMarker id={turn.value.id} seed={turn.value.seed} />;
   }
 }
 
-function MessageRow({ value }: { value: Extract<TranscriptItem, { kind: "message" }>["value"] }) {
+function UserTurn({ msg }: { msg: RenderedMessage }) {
   const c = useColors();
-  const [showThinking, setShowThinking] = useState(false);
-  const user = value.role === "User";
-
   return (
     <View
       style={{
-        alignSelf: user ? "flex-end" : "stretch",
-        maxWidth: user ? "88%" : undefined,
+        alignSelf: "flex-end",
+        maxWidth: "88%",
         gap: space.sm,
         // A message the server has not confirmed yet is dimmed rather than
         // hidden: it was typed, and pretending otherwise loses it.
-        opacity: value.optimistic || value.queued ? 0.55 : 1,
+        opacity: msg.optimistic || msg.queued ? 0.55 : 1,
       }}
     >
-      {value.thinking.length > 0 ? (
-        <Pressable onPress={() => setShowThinking((v) => !v)}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-            <Brain size={14} color={c.legendFaint} />
-            <Body size="xs" tone="faint">
-              {showThinking ? "hide thinking" : `thinking (${value.thinking.length})`}
-            </Body>
-          </View>
-        </Pressable>
+      <Artifacts items={msg.artifacts} />
+      {msg.text ? (
+        <View
+          style={{
+            backgroundColor: c.panelRaised,
+            borderRadius: radii.lg,
+            paddingHorizontal: space.md,
+            paddingVertical: space.sm,
+          }}
+        >
+          <Body>{msg.text}</Body>
+        </View>
       ) : null}
-
-      {showThinking
-        ? value.thinking.map((t, i) => (
-            <View
-              key={i}
-              style={{
-                backgroundColor: c.screen,
-                borderRadius: radii.md,
-                padding: space.md,
-              }}
-            >
-              <Body size="sm" tone="dim">
-                {t}
-              </Body>
-            </View>
-          ))
-        : null}
-
-      {value.text ? (
-        user ? (
-          <View
-            style={{
-              backgroundColor: c.panelRaised,
-              borderRadius: radii.lg,
-              paddingHorizontal: space.md,
-              paddingVertical: space.sm,
-            }}
-          >
-            <Body>{value.text}</Body>
-          </View>
-        ) : (
-          <Markdown>{value.text}</Markdown>
-        )
-      ) : null}
-
-      <Artifacts items={value.artifacts} />
-
-      {value.toolCalls.map((call) => (
-        <ToolCall key={call.id} call={call} startedAtMs={value.startedAtMs} />
-      ))}
-
-      {value.subagentResults.map((sub) => (
-        <Card key={sub.subagentId} style={{ padding: space.md, gap: space.xs }}>
-          <Body size="sm" weight="600">
-            {sub.title}
-          </Body>
-          <Body size="sm" tone="dim" numberOfLines={6}>
-            {sub.text}
-          </Body>
-        </Card>
-      ))}
-
-      {value.queued ? (
+      {msg.queued ? (
         <Body size="xs" tone="faint">
           queued
         </Body>
@@ -129,13 +95,52 @@ function MessageRow({ value }: { value: Extract<TranscriptItem, { kind: "message
   );
 }
 
+function AssistantTurn({
+  msgs,
+  live,
+}: {
+  msgs: RenderedMessage[];
+  live?: { text: string };
+}) {
+  const segments = buildSegments(msgs, live);
+  return (
+    <View style={{ gap: space.md }}>
+      {segments.map((segment) => (
+        <SegmentView key={segment.key} segment={segment} />
+      ))}
+    </View>
+  );
+}
+
+function SegmentView({ segment }: { segment: Segment }) {
+  switch (segment.kind) {
+    case "text":
+      return <Markdown>{segment.text}</Markdown>;
+    case "work":
+      return (
+        <WorkGroup
+          items={segment.items}
+          live={segment.live}
+          startedAtMs={segment.startedAtMs}
+          endedAtMs={segment.endedAtMs}
+        />
+      );
+    // Standalone, never inside a group. A pending question behind a fold is a
+    // question nobody answers.
+    case "ask":
+      return <ToolCall call={segment.call} />;
+    case "artifacts":
+      return <Artifacts items={segment.artifacts} />;
+  }
+}
+
 /** A thing that happened at a point in the transcript rather than a thing said. */
 function Marker({
   icon,
   text,
   detail,
 }: {
-  icon: "hook" | "compaction";
+  icon?: "compaction";
   text: string;
   detail?: string;
 }) {
@@ -145,9 +150,7 @@ function Marker({
     <Pressable onPress={() => detail && setOpen((v) => !v)}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
         <View style={{ flex: 1, height: 1, backgroundColor: c.rule }} />
-        {icon === "compaction" ? (
-          <Scissors size={12} color={c.legendFaint} />
-        ) : null}
+        {icon === "compaction" ? <Scissors size={12} color={c.legendFaint} /> : null}
         <Body size="xs" tone="faint">
           {text}
         </Body>

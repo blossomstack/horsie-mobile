@@ -474,4 +474,43 @@ describe("layoutAgentTree", () => {
     const tree = layoutAgentTree([{ ...main, title: "port the journal" }]);
     expect(tree.nodes[0].label).toBe("port the journal");
   });
+
+  /* `nodes` is an outline, and the graph screen draws it as one: an indent per
+     depth, in list order. That only reads as a tree while every member comes
+     out after the member it hangs off — so this is a property of the order,
+     scanned over whatever the roster happens to be, rather than one expected
+     sequence that a new shape would walk straight past. */
+  describe("outline order", () => {
+    const rosters: Record<string, [SubAgentView[], SubSessionView[]]> = {
+      "a chain": [[main, agent("a"), agent("b", "a", 2), agent("c", "b", 3)], []],
+      "several branches": [
+        [main, agent("a"), agent("b"), agent("a1", "a", 2), agent("b1", "b", 2)],
+        [],
+      ],
+      "sub sessions and the agents under them": [
+        [main, agent("sub", "s", 2)],
+        [subSession("s")],
+      ],
+      "a member nobody can place": [[main, agent("orphan", "gone", 3)], []],
+      "a cycle": [[main, agent("a", "b"), agent("b", "a")], []],
+    };
+
+    for (const [name, [agents, subSessions]] of Object.entries(rosters)) {
+      it(`puts every member after the one it hangs off — ${name}`, () => {
+        const tree = layoutAgentTree(agents, subSessions);
+        const seen = new Set<string>();
+        for (const node of tree.nodes) {
+          if (node.parent !== null) {
+            expect(seen.has(node.parent)).toBe(true);
+          }
+          seen.add(node.id);
+        }
+        // And the indent has to move by one level at a time, or a row two
+        // levels in reads as a child of something that is not its parent.
+        for (let i = 1; i < tree.nodes.length; i++) {
+          expect(tree.nodes[i].depth).toBeLessThanOrEqual(tree.nodes[i - 1].depth + 1);
+        }
+      });
+    }
+  });
 });

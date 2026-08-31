@@ -13,12 +13,12 @@ import { MAIN_AGENT, api } from "@/api/client";
 import { Body, Card, Loading, Mono, ReadError } from "@/components/ui";
 import { TranscriptRow } from "@/components/transcript/Item";
 import { Tasks } from "@/components/transcript/Tasks";
+import { groupTurns, type TurnGroup } from "@/core/segments";
 import { useSessionStream } from "@/hooks/useSessionStream";
 import { useSession } from "@/hooks/useSessions";
 import { StatusPill } from "./SessionsScreen";
 import { SessionStatusKind } from "@/api/types";
 import { radii, space, text, useColors } from "@/theme";
-import type { TranscriptItem } from "@/core/transcript";
 
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -41,7 +41,21 @@ export default function SessionScreen() {
   // Inverted list: newest at the bottom, and "load older" is the *end* of the
   // data. That is what keeps the scroll position steady while older pages are
   // prepended — the case an ordinary list handles worst.
-  const rows = useMemo(() => [...stream.items].reverse(), [stream.items]);
+  //
+  // Rows are turns, not messages: a run of assistant messages is one entry, so
+  // the nine provider calls behind one answer scroll as one thing.
+  const rows = useMemo(() => [...groupTurns(stream.items)].reverse(), [stream.items]);
+
+  // The tail being written now continues the newest entry when that entry is
+  // the agent's. When it is not — the person has just spoken, or the log is
+  // empty — it starts one of its own, so the first token of a turn has
+  // somewhere to land.
+  const streaming = stream.streaming;
+  const continues = streaming.length > 0 && rows[0]?.kind === "assistant";
+  const pendingTurn: TurnGroup | null =
+    streaming.length > 0 && !continues
+      ? { kind: "assistant", id: "streaming", msgs: [] }
+      : null;
 
   const parked = stream.livePendingAsks?.length ? stream.livePendingAsks : null;
 
@@ -100,7 +114,7 @@ export default function SessionScreen() {
 
         <FlatList
           inverted
-          data={rows}
+          data={pendingTurn ? [pendingTurn, ...rows] : rows}
           keyExtractor={keyOf}
           // `flexGrow` + `flex-end` on an inverted list is what puts a short
           // transcript at the *top* of the screen. Without it the content
@@ -121,16 +135,19 @@ export default function SessionScreen() {
             ) : null
           }
           ListHeaderComponent={
-            <View style={{ gap: space.lg }}>
-              {parked ? <ParkedAsks asks={parked} onAnswer={answer} /> : null}
-              {stream.streaming ? (
-                <Body tone="dim" style={{ fontStyle: "italic" }}>
-                  {stream.streaming}
-                </Body>
-              ) : null}
-            </View>
+            parked ? (
+              <View style={{ gap: space.lg }}>
+                <ParkedAsks asks={parked} onAnswer={answer} />
+              </View>
+            ) : null
           }
-          renderItem={({ item }) => <TranscriptRow item={item} />}
+          renderItem={({ item, index }) => (
+            <TranscriptRow
+              turn={item}
+              // Only the newest entry can be the one still being written.
+              live={index === 0 && streaming ? { text: streaming } : undefined}
+            />
+          )}
         />
 
         <View
@@ -175,20 +192,7 @@ export default function SessionScreen() {
   );
 }
 
-function keyOf(item: TranscriptItem): string {
-  switch (item.kind) {
-    case "message":
-      return `m:${item.value.id}`;
-    case "notice":
-      return `h:${item.value.id}`;
-    case "compaction":
-      return `c:${item.value.seq}`;
-    case "compaction-skipped":
-      return `cs:${item.value.atMs}`;
-    case "subSession":
-      return `s:${item.value.id}`;
-  }
-}
+const keyOf = (turn: TurnGroup): string => turn.id;
 
 function StatusBar({ stream }: { stream: ReturnType<typeof useSessionStream>["stream"] }) {
   const c = useColors();

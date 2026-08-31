@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { FlatList, Pressable, View } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import Svg, { Path } from "react-native-svg";
 import { useQuery } from "@tanstack/react-query";
+import { ChevronDown, ChevronRight, CornerDownRight, RotateCcw } from "lucide-react-native";
 import { api } from "@/api/client";
-import { Body, Empty, Loading, Mono, Pill, ReadError } from "@/components/ui";
+import { Body, Card, Empty, Loading, Mono, Pill, ReadError } from "@/components/ui";
 import { isLive, kindLabel, layoutAgentTree, type PlacedAgent } from "@/core/agentTree";
 import { layoutGraph } from "@/core/graphLayout";
 import { useSession } from "@/hooks/useSessions";
@@ -14,34 +14,39 @@ import { radii, space, useColors } from "@/theme";
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/routes";
+import type { WorkflowRunGraph } from "@/api/types";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-const NODE_W = 150;
-const NODE_H = 58;
-const LANE = NODE_H + 22;
-const RANK = NODE_W + 46;
+/** How far one level of nesting moves a row. Small on purpose: a deep tree at a
+ * generous indent runs out of screen before it runs out of depth. */
+const INDENT = 14;
 
 type Picture = "tree" | "run";
 
 /**
- * What a session hosts, drawn.
+ * What a session hosts.
  *
  * Two pictures, because a session has two structures and they answer different
  * questions. The **tree** is everything the session hosts — its agents, the
- * sessions branched off it, and any run it started — laid out by lineage. The
- * **run** is one workflow's step graph, which is a DAG with loops and cannot
- * be drawn as a tree at all.
+ * sessions branched off it, and any run it started — by lineage. The **run** is
+ * one workflow's step graph.
  *
- * Both layouts are `@/core`, carried from the web client unchanged; only the
- * drawing differs. Ranks run left to right and lanes down the screen, so a
- * deep tree scrolls sideways rather than squeezing.
+ * Both are drawn as lists, not as a drawn graph. A phone is about 380 points
+ * wide: three ranks of a readable node box is all that fits, so the drawn
+ * version spent its whole area on two axes of white space and put everything
+ * worth reading behind a pan. A list gives every row the full width, scrolls
+ * the way every other screen here scrolls, and loses only the picture of the
+ * edges — which for a tree is exactly what an indent already says.
+ *
+ * The run graph is a DAG with loops, and an indent cannot say that. It is
+ * ordered by rank instead — how many steps from the start — with each row
+ * naming what it leads to, and a loop marked as one.
  */
-export default function TreeScreen() {
+export default function GraphScreen() {
   const navigation = useNavigation<Nav>();
   const { id } = useRoute<RouteProp<RootStackParamList, "Graph">>().params;
   const { project } = useConnection();
-  const c = useColors();
   const [view, setView] = useState<Picture>("tree");
   const [collapsed, setCollapsed] = useState<string[]>([]);
 
@@ -76,88 +81,49 @@ export default function TreeScreen() {
   }
   if (!tree) return <Loading />;
 
-  const hasRun = run.data !== undefined;
+  const toggle = (nodeId: string) =>
+    setCollapsed((prev) =>
+      prev.includes(nodeId) ? prev.filter((x) => x !== nodeId) : [...prev, nodeId],
+    );
 
   return (
-    <>
-      <View style={{ flex: 1 }}>
-        {hasRun ? (
-          <View style={{ flexDirection: "row", gap: space.sm, padding: space.lg }}>
-            <Toggle label="Tree" on={view === "tree"} onPress={() => setView("tree")} />
-            <Toggle label="Run" on={view === "run"} onPress={() => setView("run")} />
-          </View>
-        ) : null}
+    <View style={{ flex: 1 }}>
+      {run.data ? (
+        <View style={{ flexDirection: "row", gap: space.sm, padding: space.lg }}>
+          <Toggle label="Tree" on={view === "tree"} onPress={() => setView("tree")} />
+          <Toggle label="Run" on={view === "run"} onPress={() => setView("run")} />
+        </View>
+      ) : null}
 
-        {view === "run" && run.data ? (
-          <RunGraph graph={run.data} />
-        ) : tree.nodes.length === 0 ? (
-          <Empty
-            title="Nothing hosted yet"
-            detail="This session has no subagents, sub sessions or runs — its transcript is the whole of it."
-          />
-        ) : (
-          <ScrollView horizontal contentContainerStyle={{ padding: space.lg }}>
-            <ScrollView contentContainerStyle={{ paddingBottom: space.xl }}>
-              <View
-                style={{
-                  width: tree.depth * RANK,
-                  height: tree.rows * LANE + NODE_H,
-                }}
-              >
-                <Svg
-                  width={tree.depth * RANK}
-                  height={tree.rows * LANE + NODE_H}
-                  style={{ position: "absolute" }}
-                >
-                  {tree.edges.map((e) => {
-                    const from = tree.nodes.find((n) => n.id === e.from);
-                    const to = tree.nodes.find((n) => n.id === e.to);
-                    if (!from || !to) return null;
-                    const x1 = from.depth * RANK + NODE_W;
-                    const y1 = from.lane * LANE + NODE_H / 2;
-                    const x2 = to.depth * RANK;
-                    const y2 = to.lane * LANE + NODE_H / 2;
-                    const mid = (x1 + x2) / 2;
-                    return (
-                      <Path
-                        key={`${e.from}->${e.to}`}
-                        d={`M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}`}
-                        stroke={c.rule}
-                        strokeWidth={1.5}
-                        fill="none"
-                      />
-                    );
-                  })}
-                </Svg>
-
-                {tree.nodes.map((n) => (
-                  <AgentNode
-                    key={n.id}
-                    node={n}
-                    sessionId={id}
-                    onToggle={() =>
-                      setCollapsed((prev) =>
-                        prev.includes(n.id)
-                          ? prev.filter((x) => x !== n.id)
-                          : [...prev, n.id],
-                      )
-                    }
-                  />
-                ))}
-              </View>
-            </ScrollView>
-          </ScrollView>
-        )}
-
-        {tree.hidden > 0 && view === "tree" ? (
-          <View style={{ padding: space.md, borderTopWidth: 1, borderTopColor: c.edge }}>
-            <Body tone="faint" size="xs">
-              {tree.hidden} hidden by a fold
-            </Body>
-          </View>
-        ) : null}
-      </View>
-    </>
+      {view === "run" && run.data ? (
+        <RunList graph={run.data} />
+      ) : tree.nodes.length === 0 ? (
+        <Empty
+          title="Nothing hosted yet"
+          detail="This session has no subagents, sub sessions or runs — its transcript is the whole of it."
+        />
+      ) : (
+        <FlatList
+          contentContainerStyle={{ padding: space.lg, paddingTop: run.data ? 0 : space.lg }}
+          data={tree.nodes}
+          keyExtractor={(n) => n.id}
+          renderItem={({ item }) => (
+            <AgentOutlineRow
+              node={item}
+              sessionId={id}
+              onToggle={() => toggle(item.id)}
+            />
+          )}
+          ListFooterComponent={
+            tree.hidden > 0 ? (
+              <Body tone="faint" size="xs" style={{ marginTop: space.md }}>
+                {tree.hidden} hidden by a fold
+              </Body>
+            ) : null
+          }
+        />
+      )}
+    </View>
   );
 }
 
@@ -174,6 +140,8 @@ function Toggle({
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
       style={{
         backgroundColor: on ? c.accentQuiet : c.keycap,
         borderRadius: radii.sm,
@@ -188,7 +156,15 @@ function Toggle({
   );
 }
 
-function AgentNode({
+/**
+ * One member of the tree, at its depth.
+ *
+ * Two controls, deliberately not one: the chevron folds, and the rest of the
+ * row opens. The drawn version had a single tap that folded whenever a node had
+ * children, which meant the one node worth opening — an agent that delegated —
+ * was the one node that could not be.
+ */
+function AgentOutlineRow({
   node,
   sessionId,
   onToggle,
@@ -204,136 +180,174 @@ function AgentNode({
 
   // A sub session is opened, not inspected — it is another session, talked to
   // rather than delegated to. A run node has no transcript to open at all.
-  const opens = node.kind === "sub_session" || node.kind === "subagent" || node.kind === "main";
+  const opens =
+    node.kind === "sub_session" || node.kind === "subagent" || node.kind === "main";
+  const open = () => {
+    if (!opens) return;
+    navigation.navigate("Session", {
+      id: sessionId,
+      // The main agent is the session; anything else is addressed by id.
+      agent: node.kind === "main" ? undefined : node.id,
+    });
+  };
 
   return (
-    <Pressable
-      onPress={() => {
-        if (node.children > 0) return onToggle();
-        if (!opens) return;
-        navigation.navigate("Session", {
-          id: sessionId,
-          // The main agent is the session; anything else is addressed by id.
-          agent: node.kind === "main" ? undefined : node.id,
-        });
-      }}
-      onLongPress={node.children > 0 ? undefined : onToggle}
-      style={{
-        position: "absolute",
-        left: node.depth * RANK,
-        top: node.lane * LANE,
-        width: NODE_W,
-        height: NODE_H,
-        borderRadius: radii.md,
-        borderWidth: 1,
-        borderColor: failed ? c.red : live ? c.live : c.edge,
-        backgroundColor: c.panel,
-        paddingHorizontal: space.sm,
-        justifyContent: "center",
-        gap: 2,
-      }}
-    >
-      <Body size="sm" weight="600" numberOfLines={1}>
-        {node.label}
-      </Body>
-      <Mono size="xs" numberOfLines={1}>
-        {node.detail}
-      </Mono>
-      <View style={{ flexDirection: "row", gap: space.xs, alignItems: "center" }}>
-        <Body size="xs" tone="faint">
-          {kindLabel(node.kind)}
-        </Body>
-        {node.collapsed ? <Pill label={`+${node.descendants}`} /> : null}
-      </View>
-    </Pressable>
+    <View style={{ flexDirection: "row", marginLeft: node.depth * INDENT }}>
+      {node.depth > 0 ? (
+        <CornerDownRight
+          size={13}
+          color={c.legendFaint}
+          style={{ marginTop: space.md, marginRight: space.xs }}
+        />
+      ) : null}
+
+      <Card style={{ flex: 1, marginTop: space.sm }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: space.sm,
+          }}
+        >
+          {node.children > 0 ? (
+            <Pressable
+              onPress={onToggle}
+              accessibilityRole="button"
+              accessibilityLabel={node.collapsed ? "Expand" : "Collapse"}
+              accessibilityState={{ expanded: !node.collapsed }}
+              // Padded rather than sized: a 13-point chevron is not a target.
+              hitSlop={space.sm}
+              style={{ padding: space.sm }}
+            >
+              {node.collapsed ? (
+                <ChevronRight size={16} color={c.legendDim} />
+              ) : (
+                <ChevronDown size={16} color={c.legendDim} />
+              )}
+            </Pressable>
+          ) : (
+            <View style={{ width: 16 + space.sm * 2 }} />
+          )}
+
+          <Pressable
+            onPress={open}
+            disabled={!opens}
+            accessibilityRole={opens ? "button" : undefined}
+            style={{ flex: 1, paddingVertical: space.md, gap: 2 }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+              <View
+                // The status, as a dot. A pill on every row would be the widest
+                // thing in the list and would say the same word twelve times.
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: 4,
+                  backgroundColor: failed ? c.red : live ? c.live : c.legendFaint,
+                }}
+              />
+              <Body weight="600" numberOfLines={1} style={{ flex: 1 }}>
+                {node.label}
+              </Body>
+              {node.collapsed ? <Pill label={`+${node.descendants}`} /> : null}
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+              <Body size="xs" tone="faint">
+                {kindLabel(node.kind)}
+              </Body>
+              <Mono size="xs" numberOfLines={1}>
+                {node.detail}
+              </Mono>
+            </View>
+          </Pressable>
+        </View>
+      </Card>
+    </View>
   );
 }
 
-function RunGraph({
-  graph,
-}: {
-  graph: NonNullable<ReturnType<typeof api.sessions.workflowRun> extends Promise<infer T> ? T : never>;
-}) {
+/**
+ * A run's steps, in the order the run reaches them.
+ *
+ * Ranked, not nested: a step two branches can reach has no one parent to hang
+ * off, so an indent would have to pick one and lie. Each row says where it goes
+ * instead, which is the same information the arrows carried.
+ */
+function RunList({ graph }: { graph: WorkflowRunGraph }) {
   const c = useColors();
   const layout = useMemo(
     () => layoutGraph(graph.nodes, graph.edges, graph.start),
     [graph],
   );
 
-  const width = layout.breadth * (NODE_W + 28);
-  const height = layout.depth * (NODE_H + 40);
-  const byName = new Map(layout.nodes.map((n) => [n.step, n]));
-  const at = (order: number, rank: number) => ({
-    x: order * (NODE_W + 28),
-    y: rank * (NODE_H + 40),
-  });
+  const steps = useMemo(
+    () =>
+      [...layout.nodes]
+        .sort((a, b) => a.rank - b.rank || a.order - b.order)
+        .map((placed) => ({
+          placed,
+          runs: graph.nodes.find((n) => n.step === placed.step)?.runs ?? [],
+          out: layout.edges.filter((e) => e.from === placed.step),
+        })),
+    [layout, graph.nodes],
+  );
 
   return (
-    <ScrollView horizontal contentContainerStyle={{ padding: space.lg }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: space.xl }}>
-        <View style={{ width, height: height + NODE_H }}>
-          <Svg width={width} height={height + NODE_H} style={{ position: "absolute" }}>
-            {layout.edges.map((e, i) => {
-              const from = byName.get(e.from);
-              const to = byName.get(e.to);
-              if (!from || !to) return null;
-              const a = at(from.order, from.rank);
-              const b = at(to.order, to.rank);
-              const x1 = a.x + NODE_W / 2;
-              const y1 = a.y + NODE_H;
-              const x2 = b.x + NODE_W / 2;
-              const y2 = b.y;
-              // A back-edge bows out to the side, so a loop reads as a return
-              // rather than as forward progress.
-              const d = e.back
-                ? `M${x1},${y1} C${x1 + NODE_W},${y1 + 40} ${x2 + NODE_W},${y2 - 40} ${x2},${y2}`
-                : `M${x1},${y1} C${x1},${y1 + 20} ${x2},${y2 - 20} ${x2},${y2}`;
-              return (
-                <Path
-                  key={`${e.from}->${e.to}-${i}`}
-                  d={d}
-                  stroke={e.back ? c.legendFaint : c.ruleStrong}
-                  strokeWidth={1.5}
-                  strokeDasharray={e.back ? "4 3" : undefined}
-                  fill="none"
-                />
-              );
-            })}
-          </Svg>
+    <FlatList
+      contentContainerStyle={{ padding: space.lg, paddingTop: 0 }}
+      data={steps}
+      keyExtractor={(s) => s.placed.step}
+      renderItem={({ item, index }) => (
+        <Card style={{ marginTop: index === 0 ? 0 : space.sm, padding: space.md, gap: space.xs }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+            <Body weight="600" numberOfLines={1} style={{ flex: 1 }}>
+              {item.placed.step}
+            </Body>
+            {item.placed.step === graph.start ? <Pill label="Start" /> : null}
+            {/* An unreachable step is kept and marked rather than dropped: it is
+                usually a mistake the author wants to see. */}
+            {!item.placed.reachable ? <Pill label="Unreachable" tone="danger" /> : null}
+          </View>
 
-          {layout.nodes.map((n) => {
-            const p = at(n.order, n.rank);
-            const runs = graph.nodes.find((x) => x.step === n.step)?.runs.length ?? 0;
-            return (
-              <View
-                key={n.step}
-                style={{
-                  position: "absolute",
-                  left: p.x,
-                  top: p.y,
-                  width: NODE_W,
-                  height: NODE_H,
-                  borderRadius: radii.md,
-                  borderWidth: 1,
-                  // An unreachable step is kept and marked rather than dropped:
-                  // it is usually a mistake the author wants to see.
-                  borderColor: n.reachable ? c.edge : c.redQuiet,
-                  backgroundColor: c.panel,
-                  paddingHorizontal: space.sm,
-                  justifyContent: "center",
-                }}
-              >
-                <Body size="sm" weight="600" numberOfLines={1}>
-                  {n.step}
-                </Body>
-                <Mono size="xs">
-                  {runs === 0 ? "not run" : `${runs} run${runs === 1 ? "" : "s"}`}
-                </Mono>
-              </View>
-            );
-          })}
-        </View>
-      </ScrollView>
-    </ScrollView>
+          <Mono size="xs">
+            {item.runs.length === 0
+              ? "not run"
+              : `${item.runs.length} run${item.runs.length === 1 ? "" : "s"} · ${describe(item.runs)}`}
+          </Mono>
+
+          {item.out.length > 0 ? (
+            <View style={{ gap: 2 }}>
+              {item.out.map((e) => (
+                <View
+                  key={`${e.from}->${e.to}`}
+                  style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}
+                >
+                  {e.back ? <RotateCcw size={11} color={c.legendFaint} /> : null}
+                  <Body size="xs" tone="faint" numberOfLines={1} style={{ flex: 1 }}>
+                    {e.back ? "loops back to " : "→ "}
+                    {e.to}
+                    {conditionOf(graph, e.from, e.to)}
+                  </Body>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </Card>
+      )}
+    />
   );
+}
+
+/** What became of the executions that landed on one step: the newest one's
+ * outcome, which is the one the run is on. */
+function describe(runs: WorkflowRunGraph["nodes"][number]["runs"]): string {
+  return runs[runs.length - 1]?.status.type.toLowerCase() ?? "not run";
+}
+
+/** The filter an edge is taken for, when it has one. Read off the wire rather
+ * than the layout: the layout only knows shape, and a catch-all and a filtered
+ * edge look identical to it. */
+function conditionOf(graph: WorkflowRunGraph, from: string, to: string): string {
+  const edge = graph.edges.find((e) => e.from === from && e.to === to);
+  return edge?.condition ? ` · ${edge.condition}` : "";
 }

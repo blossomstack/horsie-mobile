@@ -9,3 +9,13 @@
  * parse.
  */
 export const MAIN_AGENT = "main";
+
+/**
+ * The server's dedicated "ask the user" tool, spelled as
+ * `server/src/sessions/ask_tool.rs` spells it.
+ *
+ * A transcript has to be able to pick a question out of a run of tool calls:
+ * everything else there can be folded away behind a tap, and a question that
+ * folded away is one nobody answers.
+ */
+export const ASK_USER_TOOL = "ask_user";
