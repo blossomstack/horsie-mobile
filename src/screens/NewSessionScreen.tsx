@@ -1,19 +1,31 @@
 import { useLayoutEffect, useMemo, useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { Check, Circle, CircleDot } from "lucide-react-native";
+import { Camera, Check, Circle, CircleDot, Image as ImageIcon, FileText } from "lucide-react-native";
 import { api } from "@/api/client";
 import { ApiRequestError } from "@/api/errors";
 import {
   Body,
   Button,
   Card,
+  Chip,
   Loading,
   ReadError,
   Row,
   SectionHeader,
+  Separator,
   TextAction,
 } from "@/components/ui";
+import { AttachmentTray } from "@/components/attachments/AttachmentTray";
+import { useAttachments } from "@/hooks/useAttachments";
 import { useAgents, useEnvironments } from "@/hooks/useLibrary";
 import { useRuntimes } from "@/hooks/useRuntimes";
 import { isIOS, radii, space, type, useColors } from "@/theme";
@@ -58,6 +70,7 @@ export default function NewSessionScreen() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const attachments = useAttachments();
 
   const preset = useMemo(
     () => agents.data?.find((a) => a.name === agent) ?? null,
@@ -70,7 +83,13 @@ export default function NewSessionScreen() {
     [runtimes.rows],
   );
 
-  const ready = preset !== null && where !== null && message.trim().length > 0;
+  const ready =
+    preset !== null &&
+    where !== null &&
+    message.trim().length > 0 &&
+    // Same rule as the transcript composer: a file still going up would be
+    // dropped by a create that did not wait for its id.
+    attachments.settled;
 
   const create = async () => {
     if (!ready || !preset || !where) return;
@@ -86,7 +105,7 @@ export default function NewSessionScreen() {
               // this screen has nothing to check out anyway.
               { type: "Runtime", value: { vendor: where.name, repos: [] } },
         message: message.trim(),
-        artifacts: [],
+        artifacts: attachments.refs,
       });
       navigation.navigate("Session", { id: created.session.id });
     } catch (e) {
@@ -181,24 +200,93 @@ export default function NewSessionScreen() {
 
           <View style={{ gap: space.sm }}>
             <SectionHeader>FIRST MESSAGE</SectionHeader>
-            <View style={{ paddingHorizontal: space.lg }}>
-              <TextInput
-                value={message}
-                onChangeText={setMessage}
-                placeholder="What should it do?"
-                placeholderTextColor={c.legendFaint}
-                multiline
+            <View style={{ paddingHorizontal: space.lg, gap: space.md }}>
+              {/* iOS makes the field, the tray and the three actions one card,
+                  so they read as one thing being composed; M3 keeps the
+                  outlined field and puts the actions below it as chips. */}
+              <View
                 style={{
-                  minHeight: 110,
                   backgroundColor: isIOS ? c.panel : "transparent",
                   borderRadius: radii.block,
                   borderWidth: 1,
                   borderColor: isIOS ? c.edge : c.legendDim,
-                  padding: space.lg,
-                  color: c.legend,
-                  ...type.body,
+                  overflow: "hidden",
                 }}
-              />
+              >
+                <TextInput
+                  value={message}
+                  onChangeText={setMessage}
+                  placeholder="What should it do?"
+                  placeholderTextColor={c.legendFaint}
+                  multiline
+                  style={{
+                    minHeight: 110,
+                    padding: space.lg,
+                    color: c.legend,
+                    ...type.body,
+                  }}
+                />
+                {attachments.pending.length > 0 ? (
+                  <View style={{ paddingHorizontal: space.lg, paddingBottom: space.md }}>
+                    <AttachmentTray
+                      items={attachments.pending}
+                      onRemove={attachments.remove}
+                      onRetry={attachments.retry}
+                    />
+                  </View>
+                ) : null}
+                {isIOS ? (
+                  <>
+                    <Separator />
+                    <View style={{ flexDirection: "row" }}>
+                      {ATTACH_ACTIONS.map((action, i) => (
+                        <View
+                          key={action.source}
+                          style={{ flex: 1, flexDirection: "row" }}
+                        >
+                          {i === 0 ? null : (
+                            <View
+                              style={{
+                                width: StyleSheet.hairlineWidth,
+                                backgroundColor: c.edge,
+                              }}
+                            />
+                          )}
+                          <Pressable
+                            onPress={() => void attachments.pick(action.source)}
+                            style={({ pressed }) => ({
+                              flex: 1,
+                              flexDirection: "row",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 6,
+                              paddingVertical: space.md,
+                              opacity: pressed ? 0.6 : 1,
+                            })}
+                          >
+                            <action.icon size={19} color={c.accent} />
+                            <Body role="callout" tone="accent">
+                              {action.label}
+                            </Body>
+                          </Pressable>
+                        </View>
+                      ))}
+                    </View>
+                  </>
+                ) : null}
+              </View>
+              {isIOS ? null : (
+                <View style={{ flexDirection: "row", gap: space.sm }}>
+                  {ATTACH_ACTIONS.map((action) => (
+                    <Chip
+                      key={action.source}
+                      label={action.androidLabel}
+                      icon={<action.icon size={18} color={c.legendDim} />}
+                      onPress={() => void attachments.pick(action.source)}
+                    />
+                  ))}
+                </View>
+              )}
             </View>
           </View>
 
@@ -236,6 +324,14 @@ export default function NewSessionScreen() {
     </>
   );
 }
+
+/** The three places bytes can come from, in the order both platforms list
+ * them. Named once so the iOS strip and the Android chips cannot drift. */
+const ATTACH_ACTIONS = [
+  { source: "photos" as const, label: "Photos", androidLabel: "Photo", icon: ImageIcon },
+  { source: "camera" as const, label: "Camera", androidLabel: "Camera", icon: Camera },
+  { source: "files" as const, label: "Files", androidLabel: "File", icon: FileText },
+];
 
 /**
  * One of three single-select lists.

@@ -1,9 +1,50 @@
 import { StyleSheet, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Send } from "lucide-react-native";
+import { Camera, Paperclip, Plus, Send } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { Body, IconButton } from "@/components/ui";
-import { isIOS, radii, space, type, useColors } from "@/theme";
+import { isIOS, radii, space, touchTarget, type, useColors } from "@/theme";
+
+/**
+ * The two attachment buttons, placed the way each platform places them.
+ *
+ * iOS puts them outside the field as tinted circles; M3 puts them inside it at
+ * the trailing edge. Both are bumped to the platform's minimum target — the
+ * mock draws them at 38pt, and 38pt is a miss.
+ */
+export function AttachButtons({
+  onAttach,
+  onCamera,
+}: {
+  onAttach: () => void;
+  onCamera: () => void;
+}) {
+  const c = useColors();
+  return (
+    <>
+      <IconButton
+        accessibilityLabel="Attach a file"
+        fill={isIOS ? "keycap" : "none"}
+        size={touchTarget}
+        onPress={onAttach}
+      >
+        {isIOS ? (
+          <Plus size={21} color={c.accent} />
+        ) : (
+          <Paperclip size={22} color={c.legendDim} />
+        )}
+      </IconButton>
+      <IconButton
+        accessibilityLabel="Take a photo"
+        fill={isIOS ? "keycap" : "none"}
+        size={touchTarget}
+        onPress={onCamera}
+      >
+        <Camera size={isIOS ? 20 : 22} color={isIOS ? c.accent : c.legendDim} />
+      </IconButton>
+    </>
+  );
+}
 
 /**
  * The bar you say something from.

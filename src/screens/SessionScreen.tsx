@@ -11,7 +11,17 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { CircleHelp, GitFork } from "lucide-react-native";
 import { MAIN_AGENT, api } from "@/api/client";
 import { Body, Card, Loading, Mono, ReadError } from "@/components/ui";
-import { Composer, ComposerNotice } from "@/components/transcript/Composer";
+import {
+  AttachButtons,
+  Composer,
+  ComposerNotice,
+} from "@/components/transcript/Composer";
+import {
+  AttachSheet,
+  openAttachSheet,
+} from "@/components/attachments/AttachSheet";
+import { AttachmentTray } from "@/components/attachments/AttachmentTray";
+import { useAttachments } from "@/hooks/useAttachments";
 import { SessionGraph } from "@/components/SessionGraph";
 import { TranscriptRow } from "@/components/transcript/Item";
 import { Tasks } from "@/components/transcript/Tasks";
@@ -107,6 +117,8 @@ function Transcript({
     useSessionStream(id, agentId);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const attachments = useAttachments();
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   // Inverted list: newest at the bottom, and "load older" is the *end* of the
   // data. That is what keeps the scroll position steady while older pages are
@@ -134,10 +146,14 @@ function Transcript({
     if (!body || sending) return;
     setSending(true);
     setDraft("");
+    const refs = attachments.refs;
     const echo = addOptimisticUser(body);
     try {
-      const ack = await api.sessions.send(id, body, agentId);
+      const ack = await api.sessions.send(id, body, agentId, refs);
       ackOptimisticUser(echo, ack.messageId);
+      // Only once the server has taken them: clearing on send would drop the
+      // thumbnails a moment before finding out the message was refused.
+      attachments.clear();
     } catch {
       // Put it back rather than losing what was typed.
       removeOptimisticUser(echo);
@@ -145,7 +161,16 @@ function Transcript({
     } finally {
       setSending(false);
     }
-  }, [draft, sending, id, agentId, addOptimisticUser, ackOptimisticUser, removeOptimisticUser]);
+  }, [
+    draft,
+    sending,
+    id,
+    agentId,
+    attachments,
+    addOptimisticUser,
+    ackOptimisticUser,
+    removeOptimisticUser,
+  ]);
 
   const answer = useCallback(
     async (toolCallId: string, body: string) => {
@@ -207,7 +232,28 @@ function Transcript({
             value={draft}
             onChangeText={setDraft}
             onSend={() => void send()}
-            canSend={draft.trim().length > 0 && !sending}
+            // An attachment still going up is a reason to wait: sending now
+            // would post the text and quietly lose the file.
+            canSend={
+              draft.trim().length > 0 && !sending && attachments.settled
+            }
+            leading={
+              <AttachButtons
+                onAttach={() =>
+                  isIOS
+                    ? openAttachSheet((source) => void attachments.pick(source))
+                    : setSheetOpen(true)
+                }
+                onCamera={() => void attachments.pick("camera")}
+              />
+            }
+            above={
+              <AttachmentTray
+                items={attachments.pending}
+                onRemove={attachments.remove}
+                onRetry={attachments.retry}
+              />
+            }
           />
         ) : (
           <ComposerNotice>
@@ -216,6 +262,11 @@ function Transcript({
           </ComposerNotice>
         )}
       </KeyboardAvoidingView>
+      <AttachSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onPick={(source) => void attachments.pick(source)}
+      />
     </>
   );
 }

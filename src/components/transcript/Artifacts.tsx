@@ -9,7 +9,9 @@ import type { ArtifactRef } from "@/api/types";
 import { radii, space, useColors } from "@/theme";
 
 /** `1048576` → `1.0 MB`. */
-function bytes(n: number): string {
+/** A byte count, as a person reads one. Exported because a pending upload
+ * counts the same way a delivered one does. */
+export function bytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
