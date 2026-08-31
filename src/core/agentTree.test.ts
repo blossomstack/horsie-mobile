@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { layoutAgentTree, runNodeId, runStatus, stepRuns } from "./agentTree";
+import {
+  layoutAgentTree,
+  opensTranscript,
+  runNodeId,
+  runStatus,
+  stepRuns,
+} from "./agentTree";
 import type { SubAgentView, SubSessionView } from "@/api/types";
 
 function agent(
@@ -325,6 +331,25 @@ describe("layoutAgentTree", () => {
       ]);
       // The run node is named for the workflow it is a run of.
       expect(tree.nodes[0].label).toBe("nightly-audit");
+    });
+
+    /* The picture is the only way into a run: it has no transcript of its own,
+       so every readable thing it hosts is behind a row of it. Asserted over
+       whatever the layout drew rather than over a list written here — a fixed
+       list cannot notice a kind the walk starts producing. */
+    it("leaves every step of a run openable, and only the run itself closed", () => {
+      const tree = layoutAgentTree(
+        [step("gather", 10), step("review", 20), agent("helper", "gather", 1, 12)],
+        [],
+        [],
+        "nightly-audit",
+      );
+      expect(
+        tree.nodes.filter((n) => opensTranscript(n.kind)).map((n) => n.id),
+      ).toEqual(["gather", "helper", "review"]);
+      expect(
+        tree.nodes.filter((n) => !opensTranscript(n.kind)).map((n) => n.id),
+      ).toEqual([RUN_ROOT]);
     });
 
     /* A step delegates like any other agent, and what it delegated is its

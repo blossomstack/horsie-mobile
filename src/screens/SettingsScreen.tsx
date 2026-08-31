@@ -2,6 +2,7 @@ import { Alert, ScrollView, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import {
   Brain,
+  Check,
   ChevronRight,
   Cpu,
   FolderTree,
@@ -13,7 +14,16 @@ import {
 } from "lucide-react-native";
 import { Body, Card, Mono, Row } from "@/components/ui";
 import { useConnection } from "@/state/connection";
-import { radii, space, useColors, useTheme, type ThemeChoice } from "@/theme";
+import {
+  palettes,
+  radii,
+  space,
+  SKINS,
+  useColors,
+  useTheme,
+  type Skin,
+  type ThemeChoice,
+} from "@/theme";
 
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/routes";
@@ -29,7 +39,7 @@ const CHOICES: { key: ThemeChoice; label: string }[] = [
 export default function SettingsScreen() {
   const navigation = useNavigation<Nav>();
   const c = useColors();
-  const { choice, setChoice } = useTheme();
+  const { choice, setChoice, skin, setSkin, scheme } = useTheme();
   const { server, project, signOut } = useConnection();
 
   const readOnly = [
@@ -94,6 +104,29 @@ export default function SettingsScreen() {
         </View>
       </Section>
 
+      <Section title="Skin">
+        <Card>
+          {SKINS.map((entry, i) => (
+            <Row key={entry.key} first={i === 0} onPress={() => setSkin(entry.key)}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
+                <Swatch skin={entry.key} scheme={scheme} />
+                <View style={{ flex: 1 }}>
+                  <Body weight="600">{entry.label}</Body>
+                  <Body size="sm" tone="faint">
+                    {entry.detail}
+                  </Body>
+                </View>
+                {entry.key === skin ? <Check size={18} color={c.accent} /> : null}
+              </View>
+            </Row>
+          ))}
+        </Card>
+        <Body tone="faint" size="sm">
+          A skin changes the colours, never the layout. Light and dark are
+          chosen above and every skin has both.
+        </Body>
+      </Section>
+
       <Section title="Configuration">
         <Card>
           {readOnly.map((entry, i) => (
@@ -140,6 +173,33 @@ export default function SettingsScreen() {
         </Row>
       </Card>
     </ScrollView>
+  );
+}
+
+/**
+ * What a skin looks like, in three chips: its ground, its raised surface and
+ * its accent — read from the palette itself, in whichever mode is on.
+ *
+ * A name cannot say this. "Signal" means nothing until you have seen the lime,
+ * and a picker for a purely visual choice that shows none of it is a picker
+ * you have to guess at.
+ */
+function Swatch({ skin, scheme }: { skin: Skin; scheme: "light" | "dark" }) {
+  const p = palettes[skin][scheme];
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        borderRadius: radii.sm,
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: p.edge,
+      }}
+    >
+      {[p.chassis, p.panelRaised, p.accent].map((fill, i) => (
+        <View key={i} style={{ width: 12, height: 24, backgroundColor: fill }} />
+      ))}
+    </View>
   );
 }
 

@@ -110,6 +110,23 @@ export function kindLabel(kind: AgentKind): string {
 }
 
 /**
+ * Whether a drawn node has a transcript behind it.
+ *
+ * Everything on either roster is an agent addressable at
+ * `/sessions/:id/agents/:id`, a workflow step included — a step *is* the agent
+ * that did the work, and a run's picture is made of nothing else. Only the run
+ * node is not: it is synthesised here rather than read off a roster, it has no
+ * id in the agent space, and there is nothing to open.
+ *
+ * Exported for the same reason `isLive` is: more than one picture asks this of
+ * the same word, and a second list of openable kinds is a second chance to
+ * disagree about whether a step counts.
+ */
+export function opensTranscript(kind: AgentKind): boolean {
+  return kind !== "run";
+}
+
+/**
  * A workflow run, drawn as the node its steps hang off.
  *
  * A run is not an agent — it has no transcript, no context and no id in the
