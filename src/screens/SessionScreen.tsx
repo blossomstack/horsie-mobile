@@ -102,7 +102,17 @@ export default function SessionScreen() {
           inverted
           data={rows}
           keyExtractor={keyOf}
-          contentContainerStyle={{ padding: space.lg, gap: space.lg }}
+          // `flexGrow` + `flex-end` on an inverted list is what puts a short
+          // transcript at the *top* of the screen. Without it the content
+          // container is only as tall as its rows, and the flip leaves a fresh
+          // session's first message stranded at the bottom above the composer
+          // with a screen of blank above it.
+          contentContainerStyle={{
+            padding: space.lg,
+            gap: space.lg,
+            flexGrow: 1,
+            justifyContent: "flex-end",
+          }}
           onEndReached={loadMore}
           onEndReachedThreshold={0.4}
           ListFooterComponent={

@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type InboxScope } from "@/api/client";
 import { useConnection } from "@/state/connection";
 
@@ -12,6 +12,12 @@ export const inboxKey = (project: string | null, scope: InboxScope) =>
  * (a mailbox is not a stream, and a feed would need a cluster-wide counter the
  * session list itself does not have), so the list refetches on a slow interval
  * and whenever the app comes back to the foreground.
+ *
+ * The scope is part of the key, so each one is a page of its own — and a page
+ * nobody has read yet has no data, which is what used to blank the whole
+ * screen for a spinner every time somebody tapped Open/Unread/All. The
+ * previous scope's rows are held until the new ones land instead; the screen
+ * dims them so the stale ones are not read as the answer.
  */
 export function useInbox(scope: InboxScope = "all") {
   const { project } = useConnection();
@@ -20,6 +26,7 @@ export function useInbox(scope: InboxScope = "all") {
     queryFn: () => api.inbox.list(scope),
     enabled: project !== null,
     refetchInterval: 20_000,
+    placeholderData: keepPreviousData,
   });
 }
 

@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { api } from "@/api/client";
 import { Body, Card, Empty, Loading, Pill, ReadError, Row } from "@/components/ui";
 import { NamedRow } from "@/components/ReadOnlyList";
+import { usePullRefresh } from "@/hooks/usePullRefresh";
 import { useConnection } from "@/state/connection";
 import { radii, space, useColors } from "@/theme";
 
@@ -32,6 +33,12 @@ export default function MemoryScreen() {
 
   const shown = useMemo(() => memories.data ?? [], [memories.data]);
 
+  const refreshAll = useCallback(
+    () => Promise.all([spaces.refetch(), memories.refetch()]),
+    [spaces, memories],
+  );
+  const pull = usePullRefresh(refreshAll);
+
   if (spaces.isLoading) return <Loading />;
   if (spaces.isError) {
     return <ReadError error={spaces.error} onRetry={() => void spaces.refetch()} />;
@@ -42,13 +49,7 @@ export default function MemoryScreen() {
       <ScrollView
         contentContainerStyle={{ padding: space.lg, gap: space.lg }}
         refreshControl={
-          <RefreshControl
-            refreshing={memories.isRefetching}
-            onRefresh={() => {
-              void spaces.refetch();
-              void memories.refetch();
-            }}
-          />
+          <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} />
         }
       >
         {(spaces.data?.length ?? 0) > 0 ? (
