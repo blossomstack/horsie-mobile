@@ -58,6 +58,14 @@ function tabHeaderOptions(title: string) {
       title,
       headerLargeTitle: true,
       headerLargeTitleShadowVisible: false,
+      // Load-bearing, not cosmetic. From iOS 26 UIKit hosts the large title
+      // inside the screen's scroll view rather than inside the bar, so an
+      // opaque bar background — which is what `headerStyle.backgroundColor`
+      // gives the scroll-edge appearance — paints straight over it and the
+      // title is never seen. Nothing is lost by clearing it: at the scroll
+      // edge the chassis behind is the same colour, and the moment the list
+      // moves the bar switches to its opaque standard appearance.
+      headerLargeStyle: { backgroundColor: "transparent" },
     };
   }
   return {

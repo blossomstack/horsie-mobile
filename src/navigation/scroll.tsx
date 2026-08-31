@@ -49,10 +49,8 @@ export function useScrollOffset(): SharedValue<number> | null {
 /**
  * What a scrollable spreads onto itself to drive the header above it.
  *
- * Empty on iOS, and not merely as an optimisation: attaching an `onScroll`
- * handler to a `ScrollView` under a `headerLargeTitle` stops the large title
- * being drawn at all. UIKit owns that collapse and wants the scroll view to
- * itself; nothing here needs the offset on iOS anyway.
+ * Empty on iOS, where nothing reads the offset: UIKit collapses a large title
+ * by itself, so a worklet woken on every frame would buy nothing.
  */
 export function useScreenScroll() {
   const context = useContext(ScrollContext);
