@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Pressable, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { RootStackParamList } from "@/navigation/routes";
 import { Brain, GitBranch, Scissors } from "lucide-react-native";
 import { Body, Card, Mono } from "@/components/ui";
 import type { TranscriptItem } from "@/core/transcript";
@@ -169,9 +171,9 @@ function Marker({
 
 function SubSessionMarker({ id, seed }: { id: string; seed: string }) {
   const c = useColors();
-  const router = useRouter();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   return (
-    <Pressable onPress={() => router.push(`/session/${id}`)}>
+    <Pressable onPress={() => navigation.navigate("Session", { id })}>
       <View
         style={{
           flexDirection: "row",

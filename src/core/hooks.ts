@@ -16,7 +16,8 @@ export function toolScope(r: HookRecord): { tool: string; toolCallId: string } |
     case "PostToolUse":
     case "PostToolUseFailure":
       return a.value.call;
-    // A batch names every call it covered, so no single one owns it.
+    // A batch names every call it covered, so no single one owns it; and a
+    // compaction is not a tool call, so neither of those attaches to a card.
     case "PostToolBatch":
     case "SessionStart":
     case "SessionEnd":
@@ -29,7 +30,6 @@ export function toolScope(r: HookRecord): { tool: string; toolCallId: string } |
     case "TaskCreated":
     case "TaskCompleted":
     case "Notification":
-    // A compaction is not a tool call, so neither attaches to a tool card.
     case "PreCompact":
     case "PostCompact":
     case "CwdChanged":

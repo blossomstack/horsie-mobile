@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Pressable, View } from "react-native";
-import { Image } from "expo-image";
+import { Image, Pressable, View } from "react-native";
+
 import { FileText, ImageOff } from "lucide-react-native";
 import { api } from "@/api/client";
 import { authHeaders } from "@/api/connection";
@@ -55,8 +55,7 @@ function Artifact({ item }: { item: ArtifactRef }) {
             borderRadius: radii.md,
             backgroundColor: c.screen,
           }}
-          contentFit="contain"
-          transition={120}
+          resizeMode="contain"
           onError={() => setFailed(true)}
         />
       </Pressable>

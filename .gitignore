@@ -3,11 +3,8 @@
 # dependencies
 node_modules/
 
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
+# Metro / RN
+.metro-health-check*
 
 # Native
 .kotlin/
@@ -38,6 +35,16 @@ yarn-error.*
 
 example
 
-# generated native folders
-/ios
-/android
+
+# Native projects are committed — this repo owns them since dropping Expo's
+# prebuild. Only their build output is ignored.
+ios/build/
+ios/Pods/
+ios/*.xcworkspace/xcuserdata/
+ios/**/xcuserdata/
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+*.hprof
+.cxx/

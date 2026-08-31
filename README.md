@@ -4,6 +4,10 @@ iOS and Android app for [horsie](https://horsie.dev): inbox, sessions and transc
 
 Point it at any horsie server you can reach. It shows what your agents are saying and asking, lets you answer a question that has parked one, and starts a session. Everything else — agents, environments, workflows, routines, and all settings — is read-only; the web UI is where a deployment is changed.
 
+| <img src="docs/screenshots/inbox.png" width="200" alt="The inbox"> | <img src="docs/screenshots/sessions.png" width="200" alt="The session list"> | <img src="docs/screenshots/library.png" width="200" alt="The library"> | <img src="docs/screenshots/settings.png" width="200" alt="Settings"> |
+|:--:|:--:|:--:|:--:|
+| Inbox | Sessions | Library | Settings |
+
 ## Status
 
 Early. Not yet in either store.
@@ -22,8 +26,11 @@ There is no account or admin surface, by design.
 
 ```bash
 npm install
+cd ios && pod install && cd ..
 npm run ios      # or: npm run android
 ```
+
+Bare React Native — no Expo. `ios/` and `android/` are in the repo and are yours to edit.
 
 Sign-in uses horsie's device flow: the app shows a code, opens your browser, and you approve it there. Nothing is typed twice and no password touches the phone.
 
@@ -41,12 +48,7 @@ To move to a newer horsie, change the SHA in `schemas/HORSIE_REF` and run the fi
 
 ## Shipping
 
-Builds run on EAS, from `eas.json`. Two things have to be done by a human once, because both need an Expo or Apple login that CI cannot produce:
-
-1. `eas init` — writes the real project id into `app.json` (`extra.eas.projectId`), which is a placeholder until then.
-2. Add `EXPO_TOKEN` to the repo's Actions secrets, and put the App Store Connect app id into `eas.json` under `submit.production.ios.ascAppId`.
-
-After that, `Build` runs from the Actions tab against the `preview` or `production` profile, and any `v*` tag builds production automatically.
+Release builds are not wired up yet. Archiving from Xcode works today; a signed pipeline needs Apple credentials that only a human can produce, and it is tracked rather than stubbed.
 
 ## Licence
 
