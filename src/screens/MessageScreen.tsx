@@ -3,11 +3,20 @@ import { Alert, KeyboardAvoidingView, Platform, ScrollView, TextInput, View } fr
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { api } from "@/api/client";
 import { InboxState, type InboxMessageView } from "@/api/types";
-import { Body, Button, Card, Empty, Loading, Pill, ReadError } from "@/components/ui";
+import {
+  Body,
+  Button,
+  Card,
+  Chip,
+  Empty,
+  Loading,
+  Pill,
+  ReadError,
+} from "@/components/ui";
 import { Markdown } from "@/components/transcript/Markdown";
 import { useInbox, useInvalidateInbox } from "@/hooks/useInbox";
 import { relativeTime } from "@/lib/time";
-import { radii, space, text, useColors } from "@/theme";
+import { isIOS, radii, space, type, useColors } from "@/theme";
 
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -82,12 +91,15 @@ export default function MessageScreen() {
         <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
             <StatePill message={message} />
-            <Body tone="faint" size="xs">
+            <Body role="caption" tone="faint">
               {relativeTime(message.createdAt)}
+            </Body>
+            <Body role="caption" tone="faint">
+              {message.agentId}
             </Body>
           </View>
 
-          <Card style={{ padding: space.lg }}>
+          <Card style={{ padding: isIOS ? 18 : space.lg }}>
             <Markdown>{ask ? ask.question : (notice?.body ?? "")}</Markdown>
           </Card>
 
@@ -95,39 +107,87 @@ export default function MessageScreen() {
             <View style={{ gap: space.md }}>
               {ask.choices.length > 0 ? (
                 <View style={{ gap: space.sm }}>
-                  <Body tone="faint" size="xs" weight="700">
+                  <Body
+                    role="micro"
+                    tone="faint"
+                    weight="700"
+                    style={{ letterSpacing: 0.8 }}
+                  >
                     {ask.multiple ? "PICK ANY" : "SUGGESTED"}
                   </Body>
-                  {ask.choices.map((choice) => (
-                    <Button
-                      key={choice}
-                      label={choice}
-                      variant="secondary"
-                      disabled={busy}
-                      onPress={() => void reply(choice)}
-                    />
-                  ))}
+                  {/* iOS stacks full-width buttons; M3 offers the same answers
+                      as suggestion chips, which wrap. */}
+                  {isIOS ? (
+                    ask.choices.map((choice) => (
+                      <Button
+                        key={choice}
+                        full
+                        label={choice}
+                        variant="secondary"
+                        disabled={busy}
+                        onPress={() => void reply(choice)}
+                      />
+                    ))
+                  ) : (
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        flexWrap: "wrap",
+                        gap: space.sm,
+                      }}
+                    >
+                      {ask.choices.map((choice) => (
+                        <Chip
+                          key={choice}
+                          label={choice}
+                          onPress={busy ? undefined : () => void reply(choice)}
+                        />
+                      ))}
+                    </View>
+                  )}
                 </View>
               ) : null}
 
-              <TextInput
-                value={draft}
-                onChangeText={setDraft}
-                placeholder="Answer in your own words"
-                placeholderTextColor={c.legendFaint}
-                multiline
-                style={{
-                  minHeight: 90,
-                  backgroundColor: c.panel,
-                  borderRadius: radii.block,
-                  borderWidth: 1,
-                  borderColor: c.edge,
-                  padding: space.md,
-                  color: c.legend,
-                  fontSize: text.base,
-                }}
-              />
+              <View>
+                {/* M3's outlined field notches its own label into the border;
+                    iOS uses a filled field and a placeholder, and neither
+                    borrows the other's affordance. */}
+                {isIOS ? null : (
+                  <Body
+                    role="caption"
+                    tone="accent"
+                    style={{
+                      position: "absolute",
+                      top: -8,
+                      left: space.md,
+                      zIndex: 1,
+                      paddingHorizontal: space.xs,
+                      backgroundColor: c.chassis,
+                    }}
+                  >
+                    Your answer
+                  </Body>
+                )}
+                <TextInput
+                  value={draft}
+                  onChangeText={setDraft}
+                  placeholder={isIOS ? "Answer in your own words" : undefined}
+                  placeholderTextColor={c.legendFaint}
+                  multiline
+                  style={{
+                    minHeight: 90,
+                    backgroundColor: isIOS ? c.panel : "transparent",
+                    borderRadius: radii.block,
+                    borderWidth: 1,
+                    borderColor: isIOS ? c.edge : c.legendDim,
+                    padding: space.md,
+                    color: c.legend,
+                    ...type.body,
+                  }}
+                />
+              </View>
               <Button
+                full
                 label="Send"
                 busy={busy}
                 disabled={!draft.trim()}
@@ -137,8 +197,9 @@ export default function MessageScreen() {
           ) : null}
 
           <Button
+            full
             label="Open the session"
-            variant="secondary"
+            variant="plain"
             onPress={() =>
               navigation.navigate("Session", {
                 id: message.sessionId,
@@ -148,7 +209,7 @@ export default function MessageScreen() {
           />
 
           {ask && !open ? (
-            <Body tone="faint" size="sm">
+            <Body role="subhead" tone="faint">
               This question is settled — the agent is no longer waiting on it.
             </Body>
           ) : null}

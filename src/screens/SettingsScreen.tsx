@@ -1,4 +1,5 @@
-import { Alert, ScrollView, View } from "react-native";
+import { Alert, View } from "react-native";
+import Animated from "react-native-reanimated";
 import { useNavigation } from "@react-navigation/native";
 import {
   Brain,
@@ -22,6 +23,7 @@ import {
   useColors,
   useTheme,
 } from "@/theme";
+import { useScreenScroll } from "@/navigation/scroll";
 
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/routes";
@@ -33,6 +35,7 @@ export default function SettingsScreen() {
   const c = useColors();
   const { choice, tint } = useTheme();
   const { server, project, signOut } = useConnection();
+  const scroll = useScreenScroll();
 
   const readOnly = [
     { route: "SettingsProjects" as const, label: "Projects", icon: FolderTree },
@@ -44,7 +47,9 @@ export default function SettingsScreen() {
   ] as const;
 
   return (
-    <ScrollView
+    <Animated.ScrollView
+      {...scroll}
+      contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{ paddingVertical: space.lg, gap: space.xl }}
     >
       <Section title="Connected to">
@@ -143,7 +148,7 @@ export default function SettingsScreen() {
           </View>
         </Row>
       </Card>
-    </ScrollView>
+    </Animated.ScrollView>
   );
 }
 

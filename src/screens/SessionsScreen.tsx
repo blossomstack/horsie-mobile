@@ -1,15 +1,24 @@
-import { useCallback, useMemo } from "react";
-import { Alert, FlatList, RefreshControl, View , Pressable } from "react-native";
-import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
+import { useCallback, useLayoutEffect } from "react";
+import { Alert, FlatList, Pressable, RefreshControl, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { CornerDownRight, Plus, Trash2 } from "lucide-react-native";
-import { SessionStatusKind } from "@/api/types";
-import { Body, Card, Empty, Loading, Pill, ReadError, Row } from "@/components/ui";
+import { Plus } from "lucide-react-native";
+import { SessionStatusKind, type SessionSummary } from "@/api/types";
+import {
+  Body,
+  Empty,
+  GroupedCell,
+  IconButton,
+  Loading,
+  Pill,
+  ReadError,
+  Row,
+} from "@/components/ui";
 import { usePullRefresh } from "@/hooks/usePullRefresh";
+import { SwipeToDelete } from "@/components/SwipeToDelete";
 import { useDeleteSession, useSessionFeed, useSessions } from "@/hooks/useSessions";
-import { flattenSessions, type SessionRow } from "@/lib/sessionTree";
 import { relativeTime } from "@/lib/time";
-import { radii, space, useColors } from "@/theme";
+import { isIOS, radii, space, useColors } from "@/theme";
+import { useScreenScroll } from "@/navigation/scroll";
 
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/routes";
@@ -22,25 +31,45 @@ export default function SessionsScreen() {
   const { data, isLoading, isError, error, refetch } = useSessions();
   const pull = usePullRefresh(refetch);
   const remove = useDeleteSession();
+  const scroll = useScreenScroll();
   useSessionFeed();
 
-  const rows = useMemo(() => flattenSessions(data?.sessions ?? []), [data]);
+  const sessions = data?.sessions ?? [];
+
+  // iOS puts a new session in the nav bar; Android keeps the FAB below. Set
+  // here rather than in the navigator because only this screen knows the
+  // action, and the navigator would have to learn one screen's business to
+  // render it.
+  useLayoutEffect(() => {
+    if (!isIOS) return;
+    navigation.setOptions({
+      headerRight: () => (
+        <IconButton
+          accessibilityLabel="New session"
+          fill="keycap"
+          onPress={() => navigation.navigate("NewSession")}
+        >
+          <Plus size={22} color={c.accent} />
+        </IconButton>
+      ),
+    });
+  }, [navigation, c.accent]);
 
   // Asked before it happens, because there is no undo: the server drops the
   // session and its whole transcript, and a swipe is far too easy to make by
   // accident on a list you are scrolling.
   const confirmDelete = useCallback(
-    (row: SessionRow) => {
+    (session: SessionSummary) => {
       Alert.alert(
         "Delete this session?",
-        `"${row.title}" and everything it recorded will be gone. This cannot be undone.`,
+        `"${session.name ?? "Untitled session"}" and everything it recorded will be gone. This cannot be undone.`,
         [
           { text: "Cancel", style: "cancel" },
           {
             text: "Delete",
             style: "destructive",
             onPress: () =>
-              remove.mutate(row.sessionId, {
+              remove.mutate(session.id, {
                 onError: (e) =>
                   Alert.alert(
                     "Could not delete it",
@@ -60,145 +89,107 @@ export default function SessionsScreen() {
   return (
     <View style={{ flex: 1 }}>
       <FlatList
-        contentContainerStyle={{ padding: space.lg }}
-        data={rows}
-        keyExtractor={(r) => r.key}
+        {...scroll}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={{
+          paddingHorizontal: space.lg,
+          paddingBottom: space.xxl * 2,
+        }}
+        data={sessions}
+        keyExtractor={(s) => s.id}
         refreshControl={
           <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} />
         }
         ListEmptyComponent={
-          <Empty title="No sessions" detail="Start one with the button below." />
+          <Empty
+            title="No sessions"
+            detail={
+              isIOS
+                ? "Start one with the button above."
+                : "Start one with the button below."
+            }
+          />
         }
-        renderItem={({ item, index }) => {
-          const card = (
-            <Card
-              style={{
-                marginTop: item.depth === 0 && index > 0 ? space.sm : 0,
-                marginLeft: item.depth * space.lg,
-                // A sub session is part of the session above it, so it shares
-                // that card's outline rather than starting a new one.
-                borderTopLeftRadius: item.depth ? 0 : radii.card,
-                borderTopRightRadius: item.depth ? 0 : radii.card,
-              }}
+        renderItem={({ item, index }) => (
+          <GroupedCell
+            first={index === 0}
+            last={index === sessions.length - 1}
+            separate={!isIOS}
+          >
+            <SwipeToDelete
+              accessibilityLabel="Delete session"
+              onDelete={() => confirmDelete(item)}
             >
-              <SessionListRow row={item} />
-            </Card>
-          );
-          // Only whole sessions. A sub session row is addressed by its parent
-          // session's id plus its own agent id, so a delete swiped on one
-          // would take the parent and every other branch with it.
-          if (item.depth > 0) return card;
-          return (
-            <Swipeable
-              friction={2}
-              rightThreshold={40}
-              overshootRight={false}
-              renderRightActions={() => (
-                <DeleteAction
-                  offsetTop={index > 0 ? space.sm : 0}
-                  onPress={() => confirmDelete(item)}
-                />
-              )}
-            >
-              {card}
-            </Swipeable>
-          );
-        }}
+              <SessionListRow session={item} first={index === 0} />
+            </SwipeToDelete>
+          </GroupedCell>
+        )}
       />
 
-      <Pressable
-        onPress={() => navigation.navigate("NewSession")}
-        style={({ pressed }) => ({
-          position: "absolute",
-          right: space.lg,
-          bottom: space.lg,
-          width: 56,
-          height: 56,
-          borderRadius: 28,
-          backgroundColor: c.accent,
-          alignItems: "center",
-          justifyContent: "center",
-          opacity: pressed ? 0.85 : 1,
-        })}
-      >
-        <Plus size={26} color={c.accentInk} />
-      </Pressable>
+      {isIOS ? null : (
+        <Pressable
+          onPress={() => navigation.navigate("NewSession")}
+          accessibilityRole="button"
+          accessibilityLabel="New session"
+          android_ripple={{ color: c.ripple }}
+          style={{
+            position: "absolute",
+            right: space.lg,
+            bottom: space.lg,
+            width: 56,
+            height: 56,
+            borderRadius: radii.card,
+            backgroundColor: c.accentQuiet,
+            alignItems: "center",
+            justifyContent: "center",
+            elevation: 3,
+            shadowColor: "#000",
+            shadowOpacity: 0.22,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 3 },
+          }}
+        >
+          <Plus size={24} color={c.accentQuietInk} />
+        </Pressable>
+      )}
     </View>
   );
 }
 
-/** What a swipe uncovers. Deliberately one action and deliberately loud: it is
- * the only irreversible thing this app can do. */
-function DeleteAction({
-  offsetTop,
-  onPress,
+/**
+ * One session.
+ *
+ * Sub sessions are not rows here any more. They were an indent that repeated
+ * the parent's title, could not be deleted (a delete swiped on one would take
+ * the parent and every other branch with it) and had a whole picture of their
+ * own one tap away — the graph is where a session's shape belongs.
+ */
+function SessionListRow({
+  session,
+  first,
 }: {
-  offsetTop: number;
-  onPress: () => void;
+  session: SessionSummary;
+  first: boolean;
 }) {
-  const c = useColors();
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel="Delete session"
-      style={({ pressed }) => ({
-        width: 76,
-        marginTop: offsetTop,
-        marginLeft: space.sm,
-        borderRadius: radii.card,
-        // The palette has no ink-on-red, so this is the pair it does define —
-        // the same one the transcript's error banner uses — with the strong
-        // red kept as an outline so the panel reads as an action rather than
-        // as a notice.
-        backgroundColor: c.redQuiet,
-        borderWidth: 1,
-        borderColor: c.red,
-        alignItems: "center",
-        justifyContent: "center",
-        gap: space.xs,
-        opacity: pressed ? 0.8 : 1,
-      })}
-    >
-      <Trash2 size={18} color={c.redInk} />
-      <Body size="xs" tone="danger" weight="600">
-        Delete
-      </Body>
-    </Pressable>
-  );
-}
-
-function SessionListRow({ row }: { row: SessionRow }) {
   const navigation = useNavigation<Nav>();
-  const c = useColors();
-  const { session, sub } = row;
 
   return (
     <Row
-      first
-      onPress={() =>
-        navigation.navigate("Session", { id: row.sessionId, agent: row.agentId })
-      }
+      first={first || !isIOS}
+      onPress={() => navigation.navigate("Session", { id: session.id })}
     >
-      <View style={{ flexDirection: "row", gap: space.sm, alignItems: "flex-start" }}>
-        {row.depth > 0 ? (
-          <CornerDownRight size={14} color={c.legendFaint} style={{ marginTop: 3 }} />
-        ) : null}
-        <View style={{ flex: 1, gap: space.xs }}>
-          <Body weight="600" numberOfLines={1}>
-            {row.title}
+      <View style={{ gap: space.xs }}>
+        <Body role="headline" numberOfLines={1}>
+          {session.name ?? "Untitled session"}
+        </Body>
+        <View
+          style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}
+        >
+          <StatusPill status={session.status} />
+          {session.workflow ? <Pill label={session.workflow} /> : null}
+          <Body role="caption" tone="faint">
+            {relativeTime(session.createdAt)}
           </Body>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-            {sub ? (
-              <StatusPill status={sub.status as SessionStatusKind} />
-            ) : (
-              <StatusPill status={session.status} />
-            )}
-            {session.workflow ? <Pill label={session.workflow} /> : null}
-            <Body tone="faint" size="xs">
-              {relativeTime(sub ? sub.lastActivityMs : session.createdAt)}
-            </Body>
-          </View>
         </View>
       </View>
     </Row>

@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { CheckCircle2, ChevronDown, ChevronRight, Circle, CircleDot } from "lucide-react-native";
 import { TaskStatus, type TaskItem } from "@/api/types";
 import { Body } from "@/components/ui";
-import { space, useColors } from "@/theme";
+import { isIOS, space, useColors } from "@/theme";
 
 /**
  * The agent's own plan, as it is keeping it.
@@ -28,7 +28,7 @@ export function Tasks({ tasks }: { tasks: TaskItem[] }) {
   return (
     <View
       style={{
-        borderBottomWidth: 1,
+        borderBottomWidth: isIOS ? StyleSheet.hairlineWidth : 1,
         borderBottomColor: c.edge,
         backgroundColor: c.panel,
       }}
@@ -48,12 +48,12 @@ export function Tasks({ tasks }: { tasks: TaskItem[] }) {
         ) : (
           <ChevronRight size={14} color={c.legendFaint} />
         )}
-        <Body size="sm" weight="600">
+        <Body role="subhead" weight="600">
           {done} of {tasks.length} done
         </Body>
         {/* What it is on right now, when shut — the one line worth the space. */}
         {!open && current ? (
-          <Body size="sm" tone="dim" numberOfLines={1} style={{ flex: 1 }}>
+          <Body role="subhead" tone="dim" numberOfLines={1} style={{ flex: 1 }}>
             {current.content}
           </Body>
         ) : null}
@@ -76,7 +76,7 @@ export function Tasks({ tasks }: { tasks: TaskItem[] }) {
                 )}
               </View>
               <Body
-                size="sm"
+                role="subhead"
                 tone={task.status === TaskStatus.Completed ? "faint" : "normal"}
                 style={{ flex: 1 }}
               >

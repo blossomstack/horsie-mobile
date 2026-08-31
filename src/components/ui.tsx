@@ -263,6 +263,58 @@ export function Row({
   );
 }
 
+/**
+ * One item's surface inside a list.
+ *
+ * Two shapes behind one name, because the platforms disagree about what a list
+ * *is*: iOS runs one inset card and rounds only its ends, M3 gives every item
+ * its own card with a gap between them. A screen says which by passing
+ * `separate`, and everything downstream — corners, fill, spacing — follows.
+ *
+ * `overflow: hidden` is load-bearing and not cosmetic. A swipe action revealed
+ * under a row is clipped by whatever has the radius, and if that is the row
+ * rather than the card, the reveal squares off the card's own corner.
+ */
+export function GroupedCell({
+  children,
+  first,
+  last,
+  separate,
+  selected,
+  raised,
+}: {
+  children: ReactNode;
+  first?: boolean;
+  last?: boolean;
+  /** Its own card with a gap, rather than a slice of a shared one. */
+  separate?: boolean;
+  selected?: boolean;
+  /** The one item that is still live — drawn a step up from its neighbours. */
+  raised?: boolean;
+}) {
+  const c = useColors();
+  const round = separate || first || last;
+  return (
+    <View
+      style={{
+        backgroundColor: selected
+          ? c.accentQuiet
+          : raised
+            ? c.panelRaised
+            : c.panel,
+        borderTopLeftRadius: separate || first ? radii.card : 0,
+        borderTopRightRadius: separate || first ? radii.card : 0,
+        borderBottomLeftRadius: separate || last ? radii.card : 0,
+        borderBottomRightRadius: separate || last ? radii.card : 0,
+        marginBottom: separate ? space.sm : 0,
+        overflow: round ? "hidden" : undefined,
+      }}
+    >
+      {children}
+    </View>
+  );
+}
+
 /** A hairline between things that are not rows. */
 export function Separator({ inset = 0 }: { inset?: number }) {
   const c = useColors();
@@ -413,6 +465,44 @@ export function IconButton({
       })}
     >
       {children}
+    </Pressable>
+  );
+}
+
+/**
+ * A word you can tap — a nav bar's Cancel, a "more lines" affordance.
+ *
+ * Not a `Button`: it has no fill, no minimum height and no padding, because it
+ * sits in a bar whose height is not ours. It does get a hit slop, so the word
+ * is bigger to a finger than it is to the eye.
+ */
+export function TextAction({
+  label,
+  onPress,
+  role = "body",
+  tone = "accent",
+  disabled,
+}: {
+  label: string;
+  onPress: () => void;
+  role?: TypeRole;
+  tone?: "accent" | "danger" | "dim";
+  disabled?: boolean;
+}) {
+  const c = useColors();
+  const ink =
+    tone === "danger" ? c.redInk : tone === "dim" ? c.legendDim : c.accent;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      hitSlop={space.md}
+      style={({ pressed }) => ({ opacity: disabled ? 0.4 : pressed ? 0.6 : 1 })}
+    >
+      <Text style={{ ...type[role], color: disabled ? c.legendFaint : ink }}>
+        {label}
+      </Text>
     </Pressable>
   );
 }

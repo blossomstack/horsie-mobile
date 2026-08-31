@@ -5,10 +5,21 @@ import { CircleHelp, MessageSquare } from "lucide-react-native";
 import type { InboxScope } from "@/api/client";
 import { useInbox } from "@/hooks/useInbox";
 import { usePullRefresh } from "@/hooks/usePullRefresh";
-import { Body, Card, Empty, Loading, Pill, ReadError, Row } from "@/components/ui";
+import {
+  Body,
+  Chip,
+  Empty,
+  GroupedCell,
+  Loading,
+  Pill,
+  ReadError,
+  Row,
+  Segmented,
+} from "@/components/ui";
 import { InboxState, type InboxMessageView } from "@/api/types";
-import { radii, space, useColors } from "@/theme";
+import { isIOS, space, useColors } from "@/theme";
 import { relativeTime } from "@/lib/time";
+import { useScreenScroll } from "@/navigation/scroll";
 
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/routes";
@@ -21,51 +32,86 @@ const SCOPES: { key: InboxScope; label: string }[] = [
   { key: "all", label: "All" },
 ];
 
+/** Where a row's text starts, and so where its separator has to start too. */
+const TITLE_INSET = 48;
+
 export default function InboxScreen() {
   const [scope, setScope] = useState<InboxScope>("open");
-  const { data, isLoading, isError, error, refetch, isPlaceholderData } = useInbox(scope);
+  const { data, isLoading, isError, error, refetch, isPlaceholderData } =
+    useInbox(scope);
   const pull = usePullRefresh(refetch);
+  const scroll = useScreenScroll();
+
+  const messages = data?.messages ?? [];
+
+  if (isLoading) return <Loading />;
+  if (isError) return <ReadError error={error} onRetry={() => void refetch()} />;
 
   return (
-    <View style={{ flex: 1 }}>
-      <ScopeBar scope={scope} onChange={setScope} />
-      {isLoading ? (
-        <Loading />
-      ) : isError ? (
-        <ReadError error={error} onRetry={() => void refetch()} />
-      ) : (
-        <FlatList
-          contentContainerStyle={{ padding: space.lg, paddingTop: 0 }}
-          // Rows still being carried over from the scope tapped away from.
-          // Dimmed rather than replaced with a spinner: the shape of the list
-          // is worth keeping, and its contents are not the answer yet.
-          style={{ opacity: isPlaceholderData ? 0.5 : 1 }}
-          data={data?.messages ?? []}
-          keyExtractor={(m) => m.id}
-          refreshControl={
-            <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} />
+    <FlatList
+      {...scroll}
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={{
+        paddingHorizontal: space.lg,
+        paddingBottom: space.xl,
+      }}
+      // Rows still being carried over from the scope tapped away from.
+      // Dimmed rather than replaced with a spinner: the shape of the list
+      // is worth keeping, and its contents are not the answer yet.
+      style={{ opacity: isPlaceholderData ? 0.5 : 1 }}
+      data={messages}
+      keyExtractor={(m) => m.id}
+      refreshControl={
+        <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} />
+      }
+      ListHeaderComponent={
+        <View style={{ paddingBottom: space.md }}>
+          <ScopeBar scope={scope} onChange={setScope} />
+        </View>
+      }
+      ListEmptyComponent={
+        <Empty
+          title={scope === "open" ? "Nothing waiting" : "Nothing here"}
+          detail={
+            scope === "open"
+              ? "No agent is parked on a question."
+              : "Agents put what they say and ask here."
           }
-          ListEmptyComponent={
-            <Empty
-              title={scope === "open" ? "Nothing waiting" : "Nothing here"}
-              detail={
-                scope === "open"
-                  ? "No agent is parked on a question."
-                  : "Agents put what they say and ask here."
-              }
-            />
-          }
-          renderItem={({ item, index }) => (
-            <Card style={{ marginTop: index === 0 ? 0 : space.sm }}>
-              <MessageRow message={item} />
-            </Card>
-          )}
         />
+      }
+      renderItem={({ item, index }) => (
+        <GroupedCell
+          first={index === 0}
+          last={index === messages.length - 1}
+          separate={!isIOS}
+          // M3 lifts the newest open ask off its neighbours; iOS says the same
+          // thing with a pill and a dot, and keeps one flat surface.
+          raised={!isIOS && index === 0 && isOpenAsk(item)}
+        >
+          <MessageRow message={item} first={index === 0} />
+        </GroupedCell>
       )}
-    </View>
+      ListFooterComponent={
+        messages.length > 0 ? (
+          <Body role="subhead" tone="faint" style={{ paddingTop: space.md }}>
+            Answering here unparks the agent.
+          </Body>
+        ) : null
+      }
+    />
   );
 }
 
+function isOpenAsk(message: InboxMessageView): boolean {
+  return message.body.kind === "Ask" && message.state === InboxState.Open;
+}
+
+/**
+ * Which slice of the inbox is showing.
+ *
+ * A sliding segmented control on iOS and a row of filter chips on Android —
+ * the same closed three-way choice, drawn the way each platform draws one.
+ */
 function ScopeBar({
   scope,
   onChange,
@@ -73,61 +119,120 @@ function ScopeBar({
   scope: InboxScope;
   onChange: (next: InboxScope) => void;
 }) {
-  const c = useColors();
+  if (isIOS) {
+    return <Segmented options={SCOPES} value={scope} onChange={onChange} />;
+  }
   return (
-    <View style={{ flexDirection: "row", gap: space.sm, padding: space.lg }}>
-      {SCOPES.map((s) => {
-        const on = s.key === scope;
-        return (
-          <View
-            key={s.key}
-            style={{
-              borderRadius: radii.pill,
-              overflow: "hidden",
-              backgroundColor: on ? c.accentQuiet : c.keycap,
-            }}
-          >
-            <Row first onPress={() => onChange(s.key)}>
-              <Body size="sm" weight="600" tone={on ? "accent" : "dim"}>
-                {s.label}
-              </Body>
-            </Row>
-          </View>
-        );
-      })}
+    <View style={{ flexDirection: "row", gap: space.sm }}>
+      {SCOPES.map((option) => (
+        <Chip
+          key={option.key}
+          label={option.label}
+          selected={option.key === scope}
+          onPress={() => onChange(option.key)}
+        />
+      ))}
     </View>
   );
 }
 
-function MessageRow({ message }: { message: InboxMessageView }) {
+function MessageRow({
+  message,
+  first,
+}: {
+  message: InboxMessageView;
+  first: boolean;
+}) {
   const navigation = useNavigation<Nav>();
   const c = useColors();
   const isAsk = message.body.kind === "Ask";
   const unread = message.readAt === undefined;
 
   return (
-    <Row first onPress={() => navigation.navigate("Message", { id: message.id })}>
+    <Row
+      // On Android every message is its own card, so no row is ever the second
+      // one in anything and none of them wants a separator.
+      first={first || !isIOS}
+      inset={TITLE_INSET}
+      paddingVertical={isIOS ? 14 : 16}
+      onPress={() => navigation.navigate("Message", { id: message.id })}
+    >
       <View style={{ flexDirection: "row", gap: space.md }}>
-        <View style={{ paddingTop: 2 }}>
-          {isAsk ? (
-            <CircleHelp size={18} color={c.accent} />
-          ) : (
-            <MessageSquare size={18} color={c.legendFaint} />
-          )}
-        </View>
+        {isIOS ? (
+          <View style={{ paddingTop: 2 }}>
+            {isAsk ? (
+              <CircleHelp size={20} color={c.accent} />
+            ) : (
+              <MessageSquare size={20} color={c.legendFaint} />
+            )}
+          </View>
+        ) : (
+          <Avatar message={message} />
+        )}
         <View style={{ flex: 1, gap: space.xs }}>
-          <Body weight={unread ? "700" : "500"} numberOfLines={2}>
+          <Body
+            role="headline"
+            weight={unread ? (isIOS ? "600" : "500") : isIOS ? "500" : "400"}
+            numberOfLines={2}
+          >
             {message.title}
           </Body>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}
+          >
             <StatePill message={message} />
-            <Body tone="faint" size="xs">
+            <Body role="caption" tone="faint">
               {relativeTime(message.createdAt)}
             </Body>
           </View>
         </View>
+        {isIOS && unread ? (
+          <View
+            style={{
+              width: 9,
+              height: 9,
+              borderRadius: 4.5,
+              backgroundColor: c.accent,
+              marginTop: 7,
+            }}
+          />
+        ) : null}
       </View>
     </Row>
+  );
+}
+
+/**
+ * M3's leading avatar, tinted by what the message *is* rather than by who sent
+ * it — there is no sender here, and a circle that is always the same colour is
+ * a circle that says nothing.
+ */
+function Avatar({ message }: { message: InboxMessageView }) {
+  const c = useColors();
+  const isAsk = message.body.kind === "Ask";
+  const answered = message.state === InboxState.Answered;
+  const [fill, ink] = !isAsk
+    ? [c.surfaceHigh, c.legendDim]
+    : answered
+      ? [c.lampOkQuiet, c.lampOk]
+      : [c.accentQuiet, c.accentQuietInk];
+  return (
+    <View
+      style={{
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: fill,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {isAsk ? (
+        <CircleHelp size={22} color={ink} />
+      ) : (
+        <MessageSquare size={22} color={ink} />
+      )}
+    </View>
   );
 }
 

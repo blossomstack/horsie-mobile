@@ -8,9 +8,10 @@ import {
   View,
 } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import { GitFork, Send } from "lucide-react-native";
+import { CircleHelp, GitFork } from "lucide-react-native";
 import { MAIN_AGENT, api } from "@/api/client";
 import { Body, Card, Loading, Mono, ReadError } from "@/components/ui";
+import { Composer, ComposerNotice } from "@/components/transcript/Composer";
 import { SessionGraph } from "@/components/SessionGraph";
 import { TranscriptRow } from "@/components/transcript/Item";
 import { Tasks } from "@/components/transcript/Tasks";
@@ -19,7 +20,7 @@ import { useSessionStream } from "@/hooks/useSessionStream";
 import { useSession } from "@/hooks/useSessions";
 import { StatusPill } from "./SessionsScreen";
 import { SessionStatusKind } from "@/api/types";
-import { radii, space, text, useColors } from "@/theme";
+import { isIOS, radii, space, type, useColors } from "@/theme";
 
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -201,54 +202,19 @@ function Transcript({
           )}
         />
 
-        <View
-          style={{
-            flexDirection: "row",
-            gap: space.sm,
-            padding: space.md,
-            borderTopWidth: 1,
-            borderTopColor: c.edge,
-            backgroundColor: c.chassis,
-            alignItems: "flex-end",
-          }}
-        >
-          {takesMessages ? (
-            <>
-              <TextInput
-                value={draft}
-                onChangeText={setDraft}
-                placeholder="Say something"
-                placeholderTextColor={c.legendFaint}
-                multiline
-                style={{
-                  flex: 1,
-                  maxHeight: 120,
-                  backgroundColor: c.panel,
-                  borderRadius: radii.block,
-                  borderWidth: 1,
-                  borderColor: c.edge,
-                  paddingHorizontal: space.md,
-                  paddingVertical: space.sm,
-                  color: c.legend,
-                  fontSize: text.base,
-                }}
-              />
-              <Send
-                size={22}
-                color={draft.trim() && !sending ? c.accent : c.legendFaint}
-                onPress={send}
-                style={{ marginBottom: space.sm }}
-              />
-            </>
-          ) : (
-            // Said rather than disabled: a greyed-out box reads as "not yet",
-            // and this one is never going to accept anything.
-            <Body size="xs" tone="faint" style={{ flex: 1, paddingVertical: space.sm }}>
-              This is a workflow step. It works from its definition, not from
-              messages.
-            </Body>
-          )}
-        </View>
+        {takesMessages ? (
+          <Composer
+            value={draft}
+            onChangeText={setDraft}
+            onSend={() => void send()}
+            canSend={draft.trim().length > 0 && !sending}
+          />
+        ) : (
+          <ComposerNotice>
+            This is a workflow step. It works from its definition, not from
+            messages.
+          </ComposerNotice>
+        )}
       </KeyboardAvoidingView>
     </>
   );
@@ -265,13 +231,13 @@ function StatusBar({ stream }: { stream: ReturnType<typeof useSessionStream>["st
           flexDirection: "row",
           gap: space.sm,
           alignItems: "center",
-          backgroundColor: c.keycap,
+          backgroundColor: isIOS ? c.keycap : c.surfaceHigh,
           paddingHorizontal: space.lg,
           paddingVertical: space.sm,
         }}
       >
         <ActivityIndicator size="small" color={c.legendDim} />
-        <Body size="xs" tone="dim">
+        <Body role="caption" tone="dim">
           Reconnecting — anything missed is replayed
         </Body>
       </View>
@@ -279,8 +245,14 @@ function StatusBar({ stream }: { stream: ReturnType<typeof useSessionStream>["st
   }
   if (stream.streamError) {
     return (
-      <View style={{ backgroundColor: c.redQuiet, padding: space.md }}>
-        <Body tone="danger" size="sm">
+      <View
+        style={{
+          backgroundColor: c.redQuiet,
+          paddingHorizontal: space.lg,
+          paddingVertical: isIOS ? 11 : 12,
+        }}
+      >
+        <Body role="subhead" tone="danger">
           {stream.streamError}
         </Body>
       </View>
@@ -301,9 +273,11 @@ function StatusBar({ stream }: { stream: ReturnType<typeof useSessionStream>["st
       }}
     >
       <ActivityIndicator size="small" color={c.liveInk} />
-      <Mono size="xs">{stream.progression.stage}</Mono>
+      <Mono size="xs" tone="live">
+        {stream.progression.stage}
+      </Mono>
       {stream.progression.detail ? (
-        <Body size="xs" tone="dim" numberOfLines={1} style={{ flex: 1 }}>
+        <Body role="caption" tone="dim" numberOfLines={1} style={{ flex: 1 }}>
           {stream.progression.detail}
         </Body>
       ) : null}
@@ -340,12 +314,32 @@ function ParkedAsks({
         return (
           <Card
             key={id ?? `ask-${i}`}
-            style={{ borderColor: c.accent, padding: space.lg, gap: space.md }}
+            // The one card in the app with a border, and it is the tint at
+            // 1.5px: this is an agent that has stopped, and it has to read
+            // differently from every other card on the screen.
+            style={{
+              borderWidth: isIOS ? 1.5 : 1,
+              borderColor: c.accent,
+              borderRadius: radii.ask,
+              padding: space.lg,
+              gap: space.md,
+            }}
           >
-            <Body weight="600">{ask.question}</Body>
+            <View
+              style={{ flexDirection: "row", gap: space.sm, alignItems: "flex-start" }}
+            >
+              <CircleHelp
+                size={isIOS ? 19 : 20}
+                color={c.accent}
+                style={{ marginTop: 2 }}
+              />
+              <Body role="headline" style={{ flex: 1 }}>
+                {ask.question}
+              </Body>
+            </View>
 
             {id === undefined ? (
-              <Body size="sm" tone="faint">
+              <Body role="subhead" tone="faint">
                 Answer this one from the session in the web UI — it arrived without an
                 address to reply to.
               </Body>
@@ -368,11 +362,12 @@ function ParkedAsks({
                 }}
                 editable={busy !== id}
                 style={{
-                  backgroundColor: c.codeFill,
+                  backgroundColor: c.panelRaised,
                   borderRadius: radii.block,
-                  padding: space.md,
+                  paddingHorizontal: 13,
+                  paddingVertical: 11,
                   color: c.legend,
-                  fontSize: text.base,
+                  ...type.body,
                 }}
               />
             )}
