@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
+import { isIOS } from "@/theme";
 import {
   useAnimatedScrollHandler,
   useSharedValue,
@@ -45,12 +46,19 @@ export function useScrollOffset(): SharedValue<number> | null {
   return useContext(ScrollContext)?.scrollY ?? null;
 }
 
-/** What a scrollable spreads onto itself to drive the header above it. */
+/**
+ * What a scrollable spreads onto itself to drive the header above it.
+ *
+ * Empty on iOS, and not merely as an optimisation: attaching an `onScroll`
+ * handler to a `ScrollView` under a `headerLargeTitle` stops the large title
+ * being drawn at all. UIKit owns that collapse and wants the scroll view to
+ * itself; nothing here needs the offset on iOS anyway.
+ */
 export function useScreenScroll() {
   const context = useContext(ScrollContext);
   return useMemo(
     () =>
-      context
+      context && !isIOS
         ? { onScroll: context.onScroll, scrollEventThrottle: 16 }
         : ({} as { onScroll?: undefined; scrollEventThrottle?: undefined }),
     [context],
