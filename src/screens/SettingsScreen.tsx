@@ -124,7 +124,7 @@ export default function SettingsScreen() {
                   text: "Sign out",
                   style: "destructive",
                   onPress: () => {
-                    void signOut().then(() => navigation.navigate("Connect"));
+                    void signOut();
                   },
                 },
               ],

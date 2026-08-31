@@ -47,7 +47,7 @@ export default function ProjectsSettingsScreen() {
                   size={18}
                   color={c.legendFaint}
                   onPress={() => {
-                    void chooseProject(p.id).then(() => navigation.navigate("Tabs"));
+                    void chooseProject(p.id).then(() => navigation.popTo("Tabs"));
                   }}
                 />
               )

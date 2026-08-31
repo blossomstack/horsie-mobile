@@ -1,16 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigation } from "@react-navigation/native";
 import { FlatList, View } from "react-native";
 import { ChevronRight } from "lucide-react-native";
 import { api } from "@/api/client";
 import { Body, Card, Empty, Loading, ReadError, Row } from "@/components/ui";
 import { useConnection } from "@/state/connection";
 import { space, useColors } from "@/theme";
-
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "@/navigation/routes";
-
-type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
  * Which project to read.
@@ -20,7 +14,6 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * screen would render an empty list that looks like an empty account.
  */
 export default function Projects() {
-  const navigation = useNavigation<Nav>();
   const c = useColors();
   const { chooseProject, server } = useConnection();
 
@@ -56,8 +49,8 @@ export default function Projects() {
           <Row
             first
             onPress={async () => {
+              // Choosing one is what mounts the tabs; see the navigator.
               await chooseProject(item.id);
-              navigation.navigate("Tabs");
             }}
           >
             <View

@@ -1,4 +1,3 @@
-import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -17,11 +16,6 @@ import { useConnection } from "@/state/connection";
 import { radii, space, text, useColors } from "@/theme";
 import type { DeviceCodeResponse } from "@/api/types";
 
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "@/navigation/routes";
-
-type Nav = NativeStackNavigationProp<RootStackParamList>;
-
 type Stage =
   | { kind: "url" }
   | { kind: "approving"; code: DeviceCodeResponse; baseUrl: string };
@@ -30,7 +24,6 @@ type Stage =
 const FALLBACK_EXPIRY_SECS = 600;
 
 export default function Connect() {
-  const navigation = useNavigation<Nav>();
   const { connect } = useConnection();
   const c = useColors();
 
@@ -70,7 +63,6 @@ export default function Connect() {
         try {
           const tokens = await probe.deviceToken(baseUrl, code.deviceCode);
           await connect(record, tokens);
-          navigation.navigate("Projects");
           return;
         } catch (e) {
           if (!(e instanceof ApiRequestError)) throw e;
@@ -89,7 +81,7 @@ export default function Connect() {
         setError("That code expired before it was approved.");
       }
     },
-    [connect, navigation],
+    [connect],
   );
 
   const begin = useCallback(async () => {
@@ -114,8 +106,9 @@ export default function Connect() {
       // A deployment with authentication turned off serves no credential
       // routes at all, so there is nothing to sign in to.
       if (!status.enabled) {
+        // The navigator swaps to the project picker on its own once this
+        // lands — there is no screen to navigate to yet.
         await connect(record, { accessToken: "", refreshToken: "", expiresIn: 0 });
-        navigation.navigate("Projects");
         return;
       }
 
@@ -134,7 +127,7 @@ export default function Connect() {
     } finally {
       setBusy(false);
     }
-  }, [url, connect, navigation, poll]);
+  }, [url, connect, poll]);
 
   return (
     <KeyboardAvoidingView

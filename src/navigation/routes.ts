@@ -7,7 +7,6 @@
  * the dev server had run and went stale whenever it had not.
  */
 export type RootStackParamList = {
-  Boot: undefined;
   Connect: undefined;
   Projects: undefined;
   Tabs: undefined;
