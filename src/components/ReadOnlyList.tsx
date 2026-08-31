@@ -46,6 +46,7 @@ export function ReadOnlyList<T>({
 
   return (
     <FlatList
+      contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{ padding: space.lg }}
       data={query.data ?? []}
       keyExtractor={keyOf}

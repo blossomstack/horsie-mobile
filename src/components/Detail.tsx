@@ -6,7 +6,10 @@ import { space } from "@/theme";
 /** The page every read-only detail screen is. */
 export function DetailPage({ children }: { children: ReactNode }) {
   return (
-    <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg }}>
+    <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={{ padding: space.lg, gap: space.lg }}
+    >
       {children}
       <Body role="subhead" tone="faint">
         Read-only. This is edited in the web UI.

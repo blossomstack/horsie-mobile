@@ -32,6 +32,7 @@ export default function SettingsAppearanceScreen() {
 
   return (
     <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{ paddingVertical: space.lg, gap: space.xl }}
     >
       <View style={{ gap: space.sm }}>
@@ -115,11 +116,15 @@ function TintCircle({
         // The double ring is two nested borders, not a shadow: a ring drawn in
         // `panel` between the swatch and the accent is what keeps a dark tint
         // from touching its own outline.
+        //
+        // Always laid out, only sometimes coloured. A ring that appears on
+        // selection would make the chosen circle 9pt taller than its
+        // neighbours and drop its caption below the other four.
         style={{
           borderRadius: (diameter + 9) / 2,
-          borderWidth: selected && isIOS ? 2 : 0,
-          borderColor: c.accent,
-          padding: selected && isIOS ? 2.5 : 0,
+          borderWidth: isIOS ? 2 : 0,
+          borderColor: selected && isIOS ? c.accent : "transparent",
+          padding: isIOS ? 2.5 : 0,
         }}
       >
         <Pressable
