@@ -1,9 +1,9 @@
-import { useState } from "react";
-import { FlatList, RefreshControl, View } from "react-native";
+import { useCallback, useState } from "react";
+import { Alert, FlatList, RefreshControl, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { CircleHelp, MessageSquare } from "lucide-react-native";
 import type { InboxScope } from "@/api/client";
-import { useInbox } from "@/hooks/useInbox";
+import { useDeleteInbox, useInbox } from "@/hooks/useInbox";
 import { usePullRefresh } from "@/hooks/usePullRefresh";
 import {
   Body,
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui";
 import { InboxState, type InboxMessageView } from "@/api/types";
 import { isIOS, space, useColors } from "@/theme";
+import { SwipeToDelete } from "@/components/SwipeToDelete";
 import { relativeTime } from "@/lib/time";
 import { useScreenScroll } from "@/navigation/scroll";
 
@@ -41,8 +42,40 @@ export default function InboxScreen() {
     useInbox(scope);
   const pull = usePullRefresh(refetch);
   const scroll = useScreenScroll();
+  const remove = useDeleteInbox();
 
   const messages = data?.messages ?? [];
+
+  // Asked before it happens, as on the session list, and for a second reason
+  // here: deleting an ask an agent is still parked on declines it, so the
+  // agent moves on with no answer. That is worth saying out loud.
+  const confirmDelete = useCallback(
+    (message: InboxMessageView) => {
+      const parked = isOpenAsk(message);
+      Alert.alert(
+        parked ? "Delete this question?" : "Delete this message?",
+        parked
+          ? `"${message.title}" will be declined, and the agent waiting on it will carry on without an answer. This cannot be undone.`
+          : `"${message.title}" will be gone. This cannot be undone.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () =>
+              remove.mutate([message.id], {
+                onError: (e) =>
+                  Alert.alert(
+                    "Could not delete it",
+                    e instanceof Error ? e.message : "The server refused.",
+                  ),
+              }),
+          },
+        ],
+      );
+    },
+    [remove],
+  );
 
   if (isLoading) return <Loading />;
   if (isError) return <ReadError error={error} onRetry={() => void refetch()} />;
@@ -88,7 +121,12 @@ export default function InboxScreen() {
           // thing with a pill and a dot, and keeps one flat surface.
           raised={!isIOS && index === 0 && isOpenAsk(item)}
         >
-          <MessageRow message={item} first={index === 0} />
+          <SwipeToDelete
+            accessibilityLabel="Delete message"
+            onDelete={() => confirmDelete(item)}
+          >
+            <MessageRow message={item} first={index === 0} />
+          </SwipeToDelete>
         </GroupedCell>
       )}
       ListFooterComponent={

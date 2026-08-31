@@ -1,7 +1,7 @@
-import { useCallback, useLayoutEffect } from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
 import { Alert, FlatList, Pressable, RefreshControl, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { Plus } from "lucide-react-native";
+import { Check, Plus, Trash2 } from "lucide-react-native";
 import { SessionStatusKind, type SessionSummary } from "@/api/types";
 import {
   Body,
@@ -13,6 +13,7 @@ import {
   ReadError,
   Row,
 } from "@/components/ui";
+import { ContextualAppBar } from "@/navigation/header";
 import { usePullRefresh } from "@/hooks/usePullRefresh";
 import { SwipeToDelete } from "@/components/SwipeToDelete";
 import { useDeleteSession, useSessionFeed, useSessions } from "@/hooks/useSessions";
@@ -33,6 +34,12 @@ export default function SessionsScreen() {
   const remove = useDeleteSession();
   const scroll = useScreenScroll();
   useSessionFeed();
+
+  // Android only. iOS has no multi-select idiom in a list like this — a swipe
+  // per row is the whole affordance there, and adding a second one would be
+  // adding a gesture the platform does not teach.
+  const [selection, setSelection] = useState<string[]>([]);
+  const selecting = !isIOS && selection.length > 0;
 
   const sessions = data?.sessions ?? [];
 
@@ -55,27 +62,43 @@ export default function SessionsScreen() {
     });
   }, [navigation, c.accent]);
 
+  // The contextual bar *replaces* the app bar rather than stacking under it,
+  // so the navigator's own header comes off while it is up.
+  useLayoutEffect(() => {
+    if (isIOS) return;
+    navigation.setOptions({ headerShown: !selecting });
+  }, [navigation, selecting]);
+
   // Asked before it happens, because there is no undo: the server drops the
   // session and its whole transcript, and a swipe is far too easy to make by
   // accident on a list you are scrolling.
   const confirmDelete = useCallback(
-    (session: SessionSummary) => {
+    (chosen: SessionSummary[]) => {
+      const one = chosen.length === 1 ? chosen[0] : null;
       Alert.alert(
-        "Delete this session?",
-        `"${session.name ?? "Untitled session"}" and everything it recorded will be gone. This cannot be undone.`,
+        one ? "Delete this session?" : `Delete ${chosen.length} sessions?`,
+        one
+          ? `"${one.name ?? "Untitled session"}" and everything it recorded will be gone. This cannot be undone.`
+          : "They and everything they recorded will be gone. This cannot be undone.",
         [
           { text: "Cancel", style: "cancel" },
           {
             text: "Delete",
             style: "destructive",
-            onPress: () =>
-              remove.mutate(session.id, {
-                onError: (e) =>
-                  Alert.alert(
-                    "Could not delete it",
-                    e instanceof Error ? e.message : "The server refused.",
-                  ),
-              }),
+            onPress: () => {
+              // One mutation per id: the server deletes one session per call,
+              // and there is no bulk route to pretend otherwise with.
+              for (const session of chosen) {
+                remove.mutate(session.id, {
+                  onError: (e) =>
+                    Alert.alert(
+                      "Could not delete it",
+                      e instanceof Error ? e.message : "The server refused.",
+                    ),
+                });
+              }
+              setSelection([]);
+            },
           },
         ],
       );
@@ -83,11 +106,37 @@ export default function SessionsScreen() {
     [remove],
   );
 
+  const toggleSelected = (id: string) =>
+    setSelection((current) =>
+      current.includes(id)
+        ? current.filter((other) => other !== id)
+        : [...current, id],
+    );
+
   if (isLoading) return <Loading />;
   if (isError) return <ReadError error={error} onRetry={() => void refetch()} />;
 
   return (
     <View style={{ flex: 1 }}>
+      {/* Drawn over the app bar rather than by the navigator: selection is
+          this screen's state, and a navigator that could render it would have
+          to hold that state for it. */}
+      {selecting ? (
+        <ContextualAppBar
+          count={selection.length}
+          onClose={() => setSelection([])}
+          actions={
+            <IconButton
+              accessibilityLabel="Delete selected"
+              onPress={() =>
+                confirmDelete(sessions.filter((s) => selection.includes(s.id)))
+              }
+            >
+              <Trash2 size={24} color={c.red} />
+            </IconButton>
+          }
+        />
+      ) : null}
       <FlatList
         {...scroll}
         contentInsetAdjustmentBehavior="automatic"
@@ -115,13 +164,28 @@ export default function SessionsScreen() {
             first={index === 0}
             last={index === sessions.length - 1}
             separate={!isIOS}
+            selected={selection.includes(item.id)}
           >
-            <SwipeToDelete
-              accessibilityLabel="Delete session"
-              onDelete={() => confirmDelete(item)}
-            >
-              <SessionListRow session={item} first={index === 0} />
-            </SwipeToDelete>
+            {selecting ? (
+              <SessionListRow
+                session={item}
+                first={index === 0}
+                selected={selection.includes(item.id)}
+                onPress={() => toggleSelected(item.id)}
+                onLongPress={() => toggleSelected(item.id)}
+              />
+            ) : (
+              <SwipeToDelete
+                accessibilityLabel="Delete session"
+                onDelete={() => confirmDelete([item])}
+              >
+                <SessionListRow
+                  session={item}
+                  first={index === 0}
+                  onLongPress={isIOS ? undefined : () => toggleSelected(item.id)}
+                />
+              </SwipeToDelete>
+            )}
           </GroupedCell>
         )}
       />
@@ -167,18 +231,42 @@ export default function SessionsScreen() {
 function SessionListRow({
   session,
   first,
+  selected,
+  onPress,
+  onLongPress,
 }: {
   session: SessionSummary;
   first: boolean;
+  selected?: boolean;
+  /** Given only while selecting, when a tap picks rather than opens. */
+  onPress?: () => void;
+  onLongPress?: () => void;
 }) {
   const navigation = useNavigation<Nav>();
+  const c = useColors();
 
   return (
     <Row
       first={first || !isIOS}
-      onPress={() => navigation.navigate("Session", { id: session.id })}
+      onPress={onPress ?? (() => navigation.navigate("Session", { id: session.id }))}
+      onLongPress={onLongPress}
     >
-      <View style={{ gap: space.xs }}>
+      <View style={{ flexDirection: "row", gap: space.md, alignItems: "center" }}>
+        {selected ? (
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              backgroundColor: c.accent,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Check size={22} color={c.accentInk} />
+          </View>
+        ) : null}
+        <View style={{ flex: 1, gap: space.xs }}>
         <Body role="headline" numberOfLines={1}>
           {session.name ?? "Untitled session"}
         </Body>
@@ -190,6 +278,7 @@ function SessionListRow({
           <Body role="caption" tone="faint">
             {relativeTime(session.createdAt)}
           </Body>
+        </View>
         </View>
       </View>
     </Row>

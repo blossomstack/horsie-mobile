@@ -185,6 +185,12 @@ export const api = {
     markRead: (ids: string[]): Promise<Ack> =>
       scoped("/inbox/read", post({ ids } satisfies InboxMessageIds)),
 
+    /** Drop these from the inbox. An open ask among them is declined on the
+     * way out — deleting the question a agent is parked on would otherwise
+     * leave it parked on something nobody can answer any more. */
+    delete: (ids: string[]): Promise<Ack> =>
+      scoped("/inbox/delete", post({ ids } satisfies InboxMessageIds)),
+
     /** Answer a parked question, or say something to the agent behind a
      * notice. The message's own kind decides which. */
     reply: (id: string, text: string): Promise<Ack> =>
