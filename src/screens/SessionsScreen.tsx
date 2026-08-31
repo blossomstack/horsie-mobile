@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useState } from "react";
-import { Alert, FlatList, Pressable, RefreshControl, View } from "react-native";
+import { Alert, Pressable, RefreshControl, View } from "react-native";
+import Animated from "react-native-reanimated";
 import { useNavigation } from "@react-navigation/native";
 import { Check, Plus, Trash2 } from "lucide-react-native";
 import { SessionStatusKind, type SessionSummary } from "@/api/types";
@@ -137,7 +138,7 @@ export default function SessionsScreen() {
           }
         />
       ) : null}
-      <FlatList
+      <Animated.FlatList
         {...scroll}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{

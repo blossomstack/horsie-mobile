@@ -11,7 +11,7 @@ import {
   isIOS,
   radii,
   space,
-  type,
+  typeRamp,
   useColors,
   type Palette,
 } from "@/theme";
@@ -41,10 +41,10 @@ export function Markdown({ children }: { children: string }) {
   const styles = useMemo<MarkedStyles>(
     () => ({
       paragraph: { paddingVertical: 0, marginBottom: space.md },
-      text: { ...type.prose, color: c.legend },
+      text: { ...typeRamp.prose, color: c.legend },
       strong: { fontWeight: "700" },
       em: { fontStyle: "italic" },
-      li: { paddingVertical: 3, ...type.prose, color: c.legend },
+      li: { paddingVertical: 3, ...typeRamp.prose, color: c.legend },
       list: { marginBottom: space.md },
       codespan: {
         backgroundColor: c.codeFill,
@@ -119,10 +119,10 @@ class ProseRenderer extends Renderer implements RendererInterface {
   heading(text: string | ReactNode[], _styles?: object, depth = 1): ReactNode {
     const ramp =
       depth === 1
-        ? type.title
+        ? typeRamp.title
         : depth === 2
-          ? type.heading
-          : type.headline;
+          ? typeRamp.heading
+          : typeRamp.headline;
     return (
       <Text
         key={this.getKey()}
@@ -238,7 +238,7 @@ class ProseRenderer extends Renderer implements RendererInterface {
           style={
             head
               ? {
-                  ...(isIOS ? type.caption : type.subhead),
+                  ...(isIOS ? typeRamp.caption : typeRamp.subhead),
                   fontWeight: isIOS ? "600" : "500",
                   color: this.c.legendDim,
                 }

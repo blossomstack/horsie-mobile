@@ -16,7 +16,7 @@ import {
 import { Markdown } from "@/components/transcript/Markdown";
 import { useInbox, useInvalidateInbox } from "@/hooks/useInbox";
 import { relativeTime } from "@/lib/time";
-import { isIOS, radii, space, type, useColors } from "@/theme";
+import { isIOS, radii, space, typeRamp, useColors } from "@/theme";
 
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -182,7 +182,7 @@ export default function MessageScreen() {
                     borderColor: isIOS ? c.edge : c.legendDim,
                     padding: space.md,
                     color: c.legend,
-                    ...type.body,
+                    ...typeRamp.body,
                   }}
                 />
               </View>

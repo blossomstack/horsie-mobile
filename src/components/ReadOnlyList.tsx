@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { FlatList, RefreshControl, View } from "react-native";
-import { Body, Card, Empty, Loading, ReadError, Row } from "@/components/ui";
+import { Body, Empty, GroupedCell, Loading, ReadError, Row } from "@/components/ui";
 import { usePullRefresh } from "@/hooks/usePullRefresh";
-import { space } from "@/theme";
+import { isIOS, space } from "@/theme";
 
 interface Query<T> {
   data: T[] | undefined;
@@ -54,11 +54,18 @@ export function ReadOnlyList<T>({
       }
       ListEmptyComponent={<Empty title={empty.title} detail={empty.detail} />}
       renderItem={({ item, index }) => (
-        <Card style={{ marginTop: index === 0 ? 0 : space.sm }}>
-          <Row first onPress={onOpen ? () => onOpen(item) : undefined}>
+        <GroupedCell
+          first={index === 0}
+          last={index === (query.data?.length ?? 0) - 1}
+          separate={!isIOS}
+        >
+          <Row
+            first={index === 0 || !isIOS}
+            onPress={onOpen ? () => onOpen(item) : undefined}
+          >
             {renderRow(item)}
           </Row>
-        </Card>
+        </GroupedCell>
       )}
       ListFooterComponent={
         footer && (query.data?.length ?? 0) > 0 ? (
@@ -84,9 +91,9 @@ export function NamedRow({
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
       <View style={{ flex: 1, gap: 2 }}>
-        <Body weight="600">{name}</Body>
+        <Body role="headline">{name}</Body>
         {detail ? (
-          <Body tone="dim" size="sm" numberOfLines={2}>
+          <Body role="subhead" tone="dim" numberOfLines={2}>
             {detail}
           </Body>
         ) : null}

@@ -30,7 +30,7 @@ import { useSessionStream } from "@/hooks/useSessionStream";
 import { useSession } from "@/hooks/useSessions";
 import { StatusPill } from "./SessionsScreen";
 import { SessionStatusKind } from "@/api/types";
-import { isIOS, radii, space, type, useColors } from "@/theme";
+import { isIOS, radii, space, typeRamp, useColors } from "@/theme";
 
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -418,7 +418,7 @@ function ParkedAsks({
                   paddingHorizontal: 13,
                   paddingVertical: 11,
                   color: c.legend,
-                  ...type.body,
+                  ...typeRamp.body,
                 }}
               />
             )}

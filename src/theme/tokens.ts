@@ -435,7 +435,7 @@ export type TypeRole =
   | "micro";
 
 /** The ramp for the platform that is actually running. */
-export const type = ramps[nativePlatform] as Record<TypeRole, TypeStyle>;
+export const typeRamp = ramps[nativePlatform] as Record<TypeRole, TypeStyle>;
 
 /** System faces only — nothing is bundled. */
 export const monoFamily = isIOS ? "Menlo" : "monospace";

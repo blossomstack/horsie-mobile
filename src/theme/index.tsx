@@ -31,7 +31,7 @@ export {
   text,
   tints,
   touchTarget,
-  type,
+  typeRamp,
 } from "./tokens";
 export type {
   NativePlatform,

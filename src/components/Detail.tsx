@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ScrollView, View } from "react-native";
-import { Body, Card, Mono, Pill, Row } from "@/components/ui";
+import { Body, Card, Mono, Pill, Row, SectionHeader } from "@/components/ui";
 import { space } from "@/theme";
 
 /** The page every read-only detail screen is. */
@@ -8,7 +8,7 @@ export function DetailPage({ children }: { children: ReactNode }) {
   return (
     <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg }}>
       {children}
-      <Body tone="faint" size="sm">
+      <Body role="subhead" tone="faint">
         Read-only. This is edited in the web UI.
       </Body>
     </ScrollView>
@@ -18,9 +18,7 @@ export function DetailPage({ children }: { children: ReactNode }) {
 export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <View style={{ gap: space.sm }}>
-      <Body tone="faint" size="xs" weight="700" style={{ letterSpacing: 0.8 }}>
-        {title.toUpperCase()}
-      </Body>
+      <SectionHeader>{title}</SectionHeader>
       {children}
     </View>
   );
@@ -46,7 +44,7 @@ export function Field({
   return (
     <Row first>
       <View style={{ flexDirection: "row", gap: space.md, alignItems: "flex-start" }}>
-        <Body tone="dim" size="sm" style={{ width: 108 }}>
+        <Body role="subhead" tone="dim" style={{ width: 108 }}>
           {label}
         </Body>
         <View style={{ flex: 1 }}>
@@ -63,7 +61,7 @@ export function Pills({ label, items }: { label: string; items: string[] }) {
   return (
     <Row first>
       <View style={{ gap: space.sm }}>
-        <Body tone="dim" size="sm">
+        <Body role="subhead" tone="dim">
           {label}
         </Body>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.xs }}>

@@ -8,7 +8,7 @@ import { Body, Mono } from "@/components/ui";
 import { buildSegments, type Segment, type TurnGroup } from "@/core/segments";
 import type { RenderedMessage } from "@/core/transcript";
 import { hookLine } from "@/core/hookText";
-import { isIOS, radii, space, type, useColors } from "@/theme";
+import { isIOS, radii, space, typeRamp, useColors } from "@/theme";
 import { Markdown } from "./Markdown";
 import { Artifacts } from "./Artifacts";
 import { ToolCall } from "./ToolCall";
@@ -89,7 +89,7 @@ function UserTurn({ msg }: { msg: RenderedMessage }) {
         >
           <Body
             style={{
-              ...type.body,
+              ...typeRamp.body,
               lineHeight: isIOS ? 23 : 24,
               color: isIOS ? c.legend : c.accentQuietInk,
             }}

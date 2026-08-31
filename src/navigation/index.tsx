@@ -8,7 +8,7 @@ import { Loading } from "@/components/ui";
 import { useInboxCounts } from "@/hooks/useInbox";
 import { useConnection } from "@/state/connection";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { isIOS, radii, space, type, useColors, useTheme } from "@/theme";
+import { isIOS, radii, space, typeRamp, useColors, useTheme } from "@/theme";
 import { TopAppBar } from "./header";
 import { ScreenScrollProvider } from "./scroll";
 import type { RootStackParamList, TabParamList } from "./routes";
@@ -168,7 +168,7 @@ function Tabs() {
         tabBarInactiveTintColor: c.legendFaint,
         tabBarLabelStyle: isIOS
           ? { fontSize: 10, lineHeight: 12, fontWeight: "600" }
-          : { ...type.micro },
+          : { ...typeRamp.micro },
         tabBarIconStyle: isIOS ? undefined : { height: 32, width: 64 },
       }}
     >
@@ -239,7 +239,7 @@ export function Navigation() {
         screenOptions={{
           headerStyle: { backgroundColor: colors.chassis },
           headerTintColor: colors.legend,
-          headerTitleStyle: { color: colors.legend, ...type.headline },
+          headerTitleStyle: { color: colors.legend, ...typeRamp.headline },
           headerShadowVisible: false,
           contentStyle: { backgroundColor: colors.chassis },
           headerBackButtonDisplayMode: "minimal",

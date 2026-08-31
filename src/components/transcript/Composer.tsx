@@ -3,7 +3,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Camera, Paperclip, Plus, Send } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { Body, IconButton } from "@/components/ui";
-import { isIOS, radii, space, touchTarget, type, useColors } from "@/theme";
+import { isIOS, radii, space, touchTarget, typeRamp, useColors } from "@/theme";
 
 /**
  * The two attachment buttons, placed the way each platform places them.
@@ -126,7 +126,7 @@ export function Composer({
               maxHeight: 120,
               paddingVertical: isIOS ? 10 : 12,
               color: c.legend,
-              ...type.body,
+              ...typeRamp.body,
             }}
           />
           {isIOS ? null : leading}

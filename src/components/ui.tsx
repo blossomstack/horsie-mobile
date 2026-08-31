@@ -17,7 +17,7 @@ import {
   space,
   text as textScale,
   touchTarget,
-  type,
+  typeRamp,
   useColors,
   type TypeRole,
 } from "@/theme";
@@ -71,7 +71,7 @@ export function Body({
                 : tone === "ink"
                   ? c.accentInk
                   : c.legend;
-  const ramp = role ? type[role] : undefined;
+  const ramp = role ? typeRamp[role] : undefined;
   return (
     <Text
       numberOfLines={numberOfLines}
@@ -112,7 +112,15 @@ export function SectionHeader({ children }: { children: string }) {
   );
 }
 
+/**
+ * `CONNECTED TO` → `Connected to`, and `MCP servers` → `MCP servers`.
+ *
+ * Only an all-caps string is folded. Lower-casing anything else would eat the
+ * acronyms a header is most likely to contain, and a header that already reads
+ * as a sentence needs nothing done to it.
+ */
 function sentence(value: string): string {
+  if (value !== value.toUpperCase()) return value;
   const lower = value.toLowerCase();
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
@@ -404,7 +412,7 @@ export function Button({
       <Text
         style={{
           color: ink,
-          ...type.headline,
+          ...typeRamp.headline,
           fontWeight: isIOS ? "600" : "500",
         }}
       >
@@ -500,7 +508,7 @@ export function TextAction({
       hitSlop={space.md}
       style={({ pressed }) => ({ opacity: disabled ? 0.4 : pressed ? 0.6 : 1 })}
     >
-      <Text style={{ ...type[role], color: disabled ? c.legendFaint : ink }}>
+      <Text style={{ ...typeRamp[role], color: disabled ? c.legendFaint : ink }}>
         {label}
       </Text>
     </Pressable>
@@ -538,7 +546,7 @@ export function Pill({
         alignSelf: "flex-start",
       }}
     >
-      <Text style={{ color: ink, ...type.micro }}>{label}</Text>
+      <Text style={{ color: ink, ...typeRamp.micro }}>{label}</Text>
     </View>
   );
 }
@@ -585,7 +593,7 @@ export function Chip({
       {selected ? <Check size={18} color={c.accentQuietInk} /> : icon}
       <Text
         style={{
-          ...type.callout,
+          ...typeRamp.callout,
           color: selected ? c.accentQuietInk : c.legendDim,
         }}
       >
@@ -648,7 +656,7 @@ export function Segmented<T extends string>({
             >
               <Text
                 style={{
-                  ...(large ? type.body : type.section),
+                  ...(large ? typeRamp.body : typeRamp.section),
                   letterSpacing: 0,
                   fontWeight: on ? "600" : "500",
                   color: on ? c.accent : c.legendDim,
@@ -694,7 +702,7 @@ export function Segmented<T extends string>({
             {on ? <Check size={18} color={c.accentQuietInk} /> : null}
             <Text
               style={{
-                ...type.callout,
+                ...typeRamp.callout,
                 color: on ? c.accentQuietInk : c.legendDim,
               }}
             >
@@ -740,11 +748,9 @@ export function Loading({ label }: { label?: string }) {
 export function Empty({ title, detail }: { title: string; detail?: string }) {
   return (
     <Centered>
-      <Body
-        role={isIOS ? "heading" : "heading"}
-        tone={isIOS ? "dim" : "normal"}
-        weight={isIOS ? "600" : "400"}
-      >
+      {/* Same role on both, and deliberately not the same voice: iOS states
+          it quietly in semibold, M3 states it plainly at full contrast. */}
+      <Body role="heading" tone={isIOS ? "dim" : "normal"}>
         {title}
       </Body>
       {detail ? (

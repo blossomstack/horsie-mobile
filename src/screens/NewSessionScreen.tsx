@@ -28,7 +28,7 @@ import { AttachmentTray } from "@/components/attachments/AttachmentTray";
 import { useAttachments } from "@/hooks/useAttachments";
 import { useAgents, useEnvironments } from "@/hooks/useLibrary";
 import { useRuntimes } from "@/hooks/useRuntimes";
-import { isIOS, radii, space, type, useColors } from "@/theme";
+import { isIOS, radii, space, typeRamp, useColors } from "@/theme";
 
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/routes";
@@ -223,7 +223,7 @@ export default function NewSessionScreen() {
                     minHeight: 110,
                     padding: space.lg,
                     color: c.legend,
-                    ...type.body,
+                    ...typeRamp.body,
                   }}
                 />
                 {attachments.pending.length > 0 ? (

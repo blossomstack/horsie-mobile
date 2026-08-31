@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
-import { Alert, FlatList, RefreshControl, View } from "react-native";
+import { Alert, RefreshControl, View } from "react-native";
+import Animated from "react-native-reanimated";
 import { useNavigation } from "@react-navigation/native";
 import { CircleHelp, MessageSquare } from "lucide-react-native";
 import type { InboxScope } from "@/api/client";
@@ -81,7 +82,7 @@ export default function InboxScreen() {
   if (isError) return <ReadError error={error} onRetry={() => void refetch()} />;
 
   return (
-    <FlatList
+    <Animated.FlatList
       {...scroll}
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{
