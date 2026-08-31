@@ -44,6 +44,7 @@ export default function InboxScreen() {
   const pull = usePullRefresh(refetch);
   const scroll = useScreenScroll();
   const remove = useDeleteInbox();
+  const c = useColors();
 
   const messages = data?.messages ?? [];
 
@@ -124,6 +125,9 @@ export default function InboxScreen() {
         >
           <SwipeToDelete
             accessibilityLabel="Delete message"
+            background={
+              !isIOS && index === 0 && isOpenAsk(item) ? c.panelRaised : c.panel
+            }
             onDelete={() => confirmDelete(item)}
           >
             <MessageRow message={item} first={index === 0} />

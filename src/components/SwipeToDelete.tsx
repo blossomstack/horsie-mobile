@@ -29,11 +29,14 @@ export function SwipeToDelete({
   onDelete,
   label = "Delete",
   accessibilityLabel,
+  background,
 }: {
   children: ReactNode;
   onDelete: () => void;
   label?: string;
   accessibilityLabel: string;
+  /** What the row is filled with. Load-bearing — see below. */
+  background?: string;
 }) {
   const c = useColors();
   return (
@@ -63,11 +66,14 @@ export function SwipeToDelete({
         </Pressable>
       )}
     >
-      {/* The row is opaque and shadowed so it reads as sliding *over* the
-          panel rather than as the panel being a second row beside it. */}
+      {/* The row has to carry its OWN fill, not borrow the card's. The action
+          is laid out inside the card and behind the row, so a transparent row
+          leaves it on show at rest — a permanent red panel down the side of
+          every list. It is shadowed so it reads as sliding *over* the action
+          rather than as a second row beside it. */}
       <View
         style={{
-          backgroundColor: "transparent",
+          backgroundColor: background ?? c.panel,
           shadowColor: "#000",
           shadowOpacity: 0.05,
           shadowRadius: 10,
