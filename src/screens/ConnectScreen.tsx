@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -7,13 +8,14 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { CircleHelp } from "lucide-react-native";
 
 import { ApiRequestError } from "@/api/errors";
 import * as probe from "@/api/probe";
 import { newServerId, normalizeBaseUrl, type ServerRecord } from "@/api/tokens";
-import { Body, Button, Card, Mono, Title, monoFamily } from "@/components/ui";
+import { Body, Button, Mono, Title, monoFamily } from "@/components/ui";
 import { useConnection } from "@/state/connection";
-import { radii, space, text, useColors } from "@/theme";
+import { radii, space, useColors } from "@/theme";
 import type { DeviceCodeResponse } from "@/api/types";
 
 type Stage =
@@ -138,7 +140,7 @@ export default function Connect() {
         {stage.kind === "url" ? (
           <>
             <Title>Point at a server</Title>
-            <Body tone="dim">
+            <Body role="prose" tone="dim">
               The address of a horsie server you can reach from this device — the same
               one you would open in a browser.
             </Body>
@@ -158,45 +160,97 @@ export default function Connect() {
                 backgroundColor: c.panel,
                 borderWidth: 1,
                 borderColor: c.edge,
-                borderRadius: radii.md,
-                padding: space.md,
+                borderRadius: radii.field,
+                paddingHorizontal: space.lg,
+                paddingVertical: space.md,
                 color: c.legend,
-                fontSize: text.base,
+                fontSize: 16,
+                lineHeight: 22,
                 fontFamily: monoFamily,
               }}
             />
 
-            {error ? <Body tone="danger">{error}</Body> : null}
+            {error ? (
+              <Body role="callout" tone="danger">
+                {error}
+              </Body>
+            ) : null}
 
             <Button
+              full
               label="Continue"
               onPress={begin}
               busy={busy}
               disabled={url.trim().length === 0}
             />
+
+            <View
+              style={{
+                flexDirection: "row",
+                gap: space.sm,
+                alignItems: "flex-start",
+              }}
+            >
+              <CircleHelp size={17} color={c.legendFaint} style={{ marginTop: 2 }} />
+              <Body role="callout" tone="faint" style={{ flex: 1 }}>
+                A browser opens next so you can approve this device. Nothing is
+                stored on the phone until you do.
+              </Body>
+            </View>
           </>
         ) : (
           <>
             <Title>Approve this device</Title>
-            <Body tone="dim">
-              A browser has opened on {stage.baseUrl}. Sign in there if you are not
-              already, then check that it shows this code:
+            <Body role="prose" tone="dim">
+              A browser has opened on{" "}
+              <Body role="prose" tone="dim" style={{ fontFamily: monoFamily }}>
+                {stage.baseUrl}
+              </Body>
+              . Sign in there if you are not already, then check that it shows
+              this code:
             </Body>
 
-            <Card style={{ padding: space.xl, alignItems: "center" }}>
-              <View style={{ gap: space.sm, alignItems: "center" }}>
-                <Body
-                  size="xxl"
-                  weight="700"
-                  style={{ fontFamily: monoFamily, letterSpacing: 4 }}
-                >
-                  {stage.code.userCode}
-                </Body>
-                <Mono size="xs">waiting for approval…</Mono>
+            {/* The code is the whole screen: it is the one thing that has to
+                be read off the phone and compared against a browser, so it is
+                set at display size and tracked out to be read a digit at a
+                time. */}
+            <View
+              style={{
+                backgroundColor: c.accentQuiet,
+                borderRadius: radii.card,
+                padding: 28,
+                alignItems: "center",
+                gap: space.md,
+              }}
+            >
+              <Body
+                style={{
+                  fontFamily: monoFamily,
+                  fontSize: 34,
+                  lineHeight: 40,
+                  letterSpacing: 6,
+                  fontWeight: "700",
+                  color: c.accentQuietInk,
+                }}
+              >
+                {stage.code.userCode}
+              </Body>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: space.sm,
+                }}
+              >
+                <ActivityIndicator size="small" color={c.accentQuietInk} />
+                <Mono size="sm" tone="dim">
+                  waiting for approval…
+                </Mono>
               </View>
-            </Card>
+            </View>
 
             <Button
+              full
               label="Open the browser again"
               variant="secondary"
               onPress={() =>
@@ -204,8 +258,9 @@ export default function Connect() {
               }
             />
             <Button
+              full
               label="Start over"
-              variant="secondary"
+              variant="plain"
               onPress={() => {
                 generation.current += 1;
                 setStage({ kind: "url" });

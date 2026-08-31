@@ -54,6 +54,10 @@
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo to attach to a message you send an agent.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose a photo to attach to a message you send an agent.</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
 </dict>

@@ -15,7 +15,7 @@ import {
 import { layoutGraph } from "@/core/graphLayout";
 import { useSession } from "@/hooks/useSessions";
 import { useConnection } from "@/state/connection";
-import { radii, space, useColors } from "@/theme";
+import { isIOS, radii, space, useColors } from "@/theme";
 
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/routes";
@@ -134,7 +134,7 @@ export function SessionGraph({ id }: { id: string }) {
           )}
           ListFooterComponent={
             tree.hidden > 0 ? (
-              <Body tone="faint" size="xs" style={{ marginTop: space.md }}>
+              <Body role="caption" tone="faint" style={{ marginTop: space.md }}>
                 {tree.hidden} hidden by a fold
               </Body>
             ) : null
@@ -162,12 +162,12 @@ function Toggle({
       accessibilityState={{ selected: on }}
       style={{
         backgroundColor: on ? c.accentQuiet : c.keycap,
-        borderRadius: radii.sm,
+        borderRadius: radii.chip,
         paddingHorizontal: space.md,
-        paddingVertical: space.sm,
+        paddingVertical: 7,
       }}
     >
-      <Body size="sm" weight="600" tone={on ? "accent" : "dim"}>
+      <Body role="subhead" weight="600" tone={on ? "accent" : "dim"}>
         {label}
       </Body>
     </Pressable>
@@ -266,13 +266,13 @@ function AgentOutlineRow({
                   backgroundColor: failed ? c.red : live ? c.live : c.legendFaint,
                 }}
               />
-              <Body weight="600" numberOfLines={1} style={{ flex: 1 }}>
+              <Body role="headline" numberOfLines={1} style={{ flex: 1 }}>
                 {node.label}
               </Body>
               {node.collapsed ? <Pill label={`+${node.descendants}`} /> : null}
             </View>
             <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-              <Body size="xs" tone="faint">
+              <Body role="caption" tone="faint">
                 {kindLabel(node.kind)}
               </Body>
               <Mono size="xs" numberOfLines={1}>
@@ -321,7 +321,7 @@ function RunList({ graph, sessionId }: { graph: WorkflowRunGraph; sessionId: str
       renderItem={({ item, index }) => (
         <Card style={{ marginTop: index === 0 ? 0 : space.sm, padding: space.md, gap: space.xs }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-            <Body weight="600" numberOfLines={1} style={{ flex: 1 }}>
+            <Body role="headline" numberOfLines={1} style={{ flex: 1 }}>
               {item.placed.step}
             </Body>
             {item.placed.step === graph.start ? <Pill label="Start" /> : null}
@@ -353,8 +353,8 @@ function RunList({ graph, sessionId }: { graph: WorkflowRunGraph; sessionId: str
                   flexDirection: "row",
                   alignItems: "center",
                   gap: space.xs,
-                  backgroundColor: c.keycap,
-                  borderRadius: radii.sm,
+                  backgroundColor: isIOS ? c.keycap : c.surfaceHigh,
+                  borderRadius: isIOS ? 7 : 8,
                   paddingHorizontal: space.sm,
                   paddingVertical: space.xs,
                 }}
@@ -375,7 +375,7 @@ function RunList({ graph, sessionId }: { graph: WorkflowRunGraph; sessionId: str
                   style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}
                 >
                   {e.back ? <RotateCcw size={11} color={c.legendFaint} /> : null}
-                  <Body size="xs" tone="faint" numberOfLines={1} style={{ flex: 1 }}>
+                  <Body role="caption" tone="faint" numberOfLines={1} style={{ flex: 1 }}>
                     {e.back ? "loops back to " : "→ "}
                     {e.to}
                     {conditionOf(graph, e.from, e.to)}

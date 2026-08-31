@@ -1,15 +1,15 @@
-import { ScrollView, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 import { Check } from "lucide-react-native";
-import { Body, Card, Row } from "@/components/ui";
+import { Body, Card, Segmented, SectionHeader } from "@/components/ui";
 import {
-  palettes,
-  radii,
+  isIOS,
   space,
-  SKINS,
+  TINTS,
   useColors,
   useTheme,
-  type Skin,
+  useTintRamp,
   type ThemeChoice,
+  type TintName,
 } from "@/theme";
 
 const MODES: { key: ThemeChoice; label: string }[] = [
@@ -19,7 +19,7 @@ const MODES: { key: ThemeChoice; label: string }[] = [
 ];
 
 /**
- * How the app looks: the exposure, and the world it is lit in.
+ * How the app looks: the exposure, and the one hue that is yours to pick.
  *
  * A page of its own rather than two blocks on the settings screen, because the
  * two are one decision made twice and neither is anything you set more than
@@ -28,103 +28,127 @@ const MODES: { key: ThemeChoice; label: string }[] = [
  * of the screen.
  */
 export default function SettingsAppearanceScreen() {
-  const c = useColors();
-  const { choice, setChoice, skin, setSkin, scheme } = useTheme();
+  const { choice, setChoice, tint, setTint } = useTheme();
 
   return (
-    <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg }}>
-      <Section title="Exposure">
-        <View style={{ flexDirection: "row", gap: space.sm }}>
-          {MODES.map((mode) => {
-            const on = mode.key === choice;
-            return (
-              <View
-                key={mode.key}
-                style={{
-                  flex: 1,
-                  borderRadius: radii.md,
-                  overflow: "hidden",
-                  backgroundColor: on ? c.accentQuiet : c.keycap,
-                }}
-              >
-                <Row first onPress={() => setChoice(mode.key)}>
-                  <Body
-                    weight="600"
-                    tone={on ? "accent" : "dim"}
-                    style={{ textAlign: "center" }}
-                  >
-                    {mode.label}
-                  </Body>
-                </Row>
-              </View>
-            );
-          })}
+    <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={{ paddingVertical: space.lg, gap: space.xl }}
+    >
+      <View style={{ gap: space.sm }}>
+        <SectionHeader>Exposure</SectionHeader>
+        <View style={{ paddingHorizontal: space.lg }}>
+          <Segmented
+            size="large"
+            options={MODES}
+            value={choice}
+            onChange={setChoice}
+          />
         </View>
-        <Body tone="faint" size="sm">
+        <Body
+          role="subhead"
+          tone="faint"
+          style={{ paddingHorizontal: space.lg, paddingTop: space.xs }}
+        >
           System follows the phone&apos;s own light and dark switch.
         </Body>
-      </Section>
+      </View>
 
-      <Section title="Skin">
-        <Card>
-          {SKINS.map((entry, i) => (
-            <Row key={entry.key} first={i === 0} onPress={() => setSkin(entry.key)}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
-                <Swatch skin={entry.key} scheme={scheme} />
-                <View style={{ flex: 1 }}>
-                  <Body weight="600">{entry.label}</Body>
-                  <Body size="sm" tone="faint">
-                    {entry.detail}
-                  </Body>
-                </View>
-                {entry.key === skin ? <Check size={18} color={c.accent} /> : null}
-              </View>
-            </Row>
-          ))}
+      <View style={{ gap: space.sm }}>
+        <SectionHeader>Tint</SectionHeader>
+        <Card style={{ marginHorizontal: space.lg }}>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              paddingVertical: space.lg,
+              paddingHorizontal: space.md,
+            }}
+          >
+            {TINTS.map((entry) => (
+              <TintCircle
+                key={entry.key}
+                name={entry.key}
+                label={entry.label}
+                selected={entry.key === tint}
+                onPress={() => setTint(entry.key)}
+              />
+            ))}
+          </View>
         </Card>
-        <Body tone="faint" size="sm">
-          A skin changes the colours, never the layout. Every skin has both
-          exposures, so choosing one never decides the other.
+        <Body
+          role="subhead"
+          tone="faint"
+          style={{ paddingHorizontal: space.lg, paddingTop: space.xs }}
+        >
+          Every tint carries a light and a dark value, so the exposure decides
+          which one is drawn — never the choice above.
         </Body>
-      </Section>
+      </View>
     </ScrollView>
   );
 }
 
 /**
- * What a skin looks like, in three chips: its ground, its raised surface and
- * its accent — read from the palette itself, in whichever exposure is on.
+ * One hue, in the exposure that is currently on.
  *
- * A name cannot say this. "Signal" means nothing until you have seen the lime,
- * and a picker for a purely visual choice that shows none of it is a picker
- * you have to guess at.
+ * Drawn from the tint's own ramp rather than from a fixed swatch, so the
+ * circles restate the rule the footnote makes: flip to dark and all five
+ * change with it, because a tint was never one colour.
  */
-function Swatch({ skin, scheme }: { skin: Skin; scheme: "light" | "dark" }) {
-  const p = palettes[skin][scheme];
+function TintCircle({
+  name,
+  label,
+  selected,
+  onPress,
+}: {
+  name: TintName;
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const c = useColors();
+  const ramp = useTintRamp(name);
+  const diameter = isIOS ? 44 : 48;
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        borderRadius: radii.sm,
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: p.edge,
-      }}
-    >
-      {[p.chassis, p.panelRaised, p.accent].map((fill, i) => (
-        <View key={i} style={{ width: 12, height: 24, backgroundColor: fill }} />
-      ))}
-    </View>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={{ gap: space.sm }}>
-      <Body tone="faint" size="xs" weight="700" style={{ letterSpacing: 0.8 }}>
-        {title.toUpperCase()}
+    <View style={{ alignItems: "center", gap: 6 }}>
+      <View
+        // The double ring is two nested borders, not a shadow: a ring drawn in
+        // `panel` between the swatch and the accent is what keeps a dark tint
+        // from touching its own outline.
+        //
+        // Always laid out, only sometimes coloured. A ring that appears on
+        // selection would make the chosen circle 9pt taller than its
+        // neighbours and drop its caption below the other four.
+        style={{
+          borderRadius: (diameter + 9) / 2,
+          borderWidth: isIOS ? 2 : 0,
+          borderColor: selected && isIOS ? c.accent : "transparent",
+          padding: isIOS ? 2.5 : 0,
+        }}
+      >
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityState={{ selected }}
+          style={{
+            width: diameter,
+            height: diameter,
+            borderRadius: diameter / 2,
+            backgroundColor: ramp.accent,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {selected ? (
+            <Check size={isIOS ? 20 : 22} color={ramp.accentInk} />
+          ) : null}
+        </Pressable>
+      </View>
+      <Body role={isIOS ? "micro" : "caption"} tone="dim" weight="400">
+        {label}
       </Body>
-      {children}
     </View>
   );
 }

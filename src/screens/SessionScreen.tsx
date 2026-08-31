@@ -8,9 +8,20 @@ import {
   View,
 } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import { GitFork, Send } from "lucide-react-native";
+import { CircleHelp, GitFork } from "lucide-react-native";
 import { MAIN_AGENT, api } from "@/api/client";
 import { Body, Card, Loading, Mono, ReadError } from "@/components/ui";
+import {
+  AttachButtons,
+  Composer,
+  ComposerNotice,
+} from "@/components/transcript/Composer";
+import {
+  AttachSheet,
+  openAttachSheet,
+} from "@/components/attachments/AttachSheet";
+import { AttachmentTray } from "@/components/attachments/AttachmentTray";
+import { useAttachments } from "@/hooks/useAttachments";
 import { SessionGraph } from "@/components/SessionGraph";
 import { TranscriptRow } from "@/components/transcript/Item";
 import { Tasks } from "@/components/transcript/Tasks";
@@ -19,7 +30,7 @@ import { useSessionStream } from "@/hooks/useSessionStream";
 import { useSession } from "@/hooks/useSessions";
 import { StatusPill } from "./SessionsScreen";
 import { SessionStatusKind } from "@/api/types";
-import { radii, space, text, useColors } from "@/theme";
+import { isIOS, radii, space, typeRamp, useColors } from "@/theme";
 
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -106,6 +117,8 @@ function Transcript({
     useSessionStream(id, agentId);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const attachments = useAttachments();
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   // Inverted list: newest at the bottom, and "load older" is the *end* of the
   // data. That is what keeps the scroll position steady while older pages are
@@ -133,10 +146,14 @@ function Transcript({
     if (!body || sending) return;
     setSending(true);
     setDraft("");
+    const refs = attachments.refs;
     const echo = addOptimisticUser(body);
     try {
-      const ack = await api.sessions.send(id, body, agentId);
+      const ack = await api.sessions.send(id, body, agentId, refs);
       ackOptimisticUser(echo, ack.messageId);
+      // Only once the server has taken them: clearing on send would drop the
+      // thumbnails a moment before finding out the message was refused.
+      attachments.clear();
     } catch {
       // Put it back rather than losing what was typed.
       removeOptimisticUser(echo);
@@ -144,7 +161,16 @@ function Transcript({
     } finally {
       setSending(false);
     }
-  }, [draft, sending, id, agentId, addOptimisticUser, ackOptimisticUser, removeOptimisticUser]);
+  }, [
+    draft,
+    sending,
+    id,
+    agentId,
+    attachments,
+    addOptimisticUser,
+    ackOptimisticUser,
+    removeOptimisticUser,
+  ]);
 
   const answer = useCallback(
     async (toolCallId: string, body: string) => {
@@ -201,55 +227,46 @@ function Transcript({
           )}
         />
 
-        <View
-          style={{
-            flexDirection: "row",
-            gap: space.sm,
-            padding: space.md,
-            borderTopWidth: 1,
-            borderTopColor: c.edge,
-            backgroundColor: c.chassis,
-            alignItems: "flex-end",
-          }}
-        >
-          {takesMessages ? (
-            <>
-              <TextInput
-                value={draft}
-                onChangeText={setDraft}
-                placeholder="Say something"
-                placeholderTextColor={c.legendFaint}
-                multiline
-                style={{
-                  flex: 1,
-                  maxHeight: 120,
-                  backgroundColor: c.panel,
-                  borderRadius: radii.md,
-                  borderWidth: 1,
-                  borderColor: c.edge,
-                  paddingHorizontal: space.md,
-                  paddingVertical: space.sm,
-                  color: c.legend,
-                  fontSize: text.base,
-                }}
+        {takesMessages ? (
+          <Composer
+            value={draft}
+            onChangeText={setDraft}
+            onSend={() => void send()}
+            // An attachment still going up is a reason to wait: sending now
+            // would post the text and quietly lose the file.
+            canSend={
+              draft.trim().length > 0 && !sending && attachments.settled
+            }
+            leading={
+              <AttachButtons
+                onAttach={() =>
+                  isIOS
+                    ? openAttachSheet((source) => void attachments.pick(source))
+                    : setSheetOpen(true)
+                }
+                onCamera={() => void attachments.pick("camera")}
               />
-              <Send
-                size={22}
-                color={draft.trim() && !sending ? c.accent : c.legendFaint}
-                onPress={send}
-                style={{ marginBottom: space.sm }}
+            }
+            above={
+              <AttachmentTray
+                items={attachments.pending}
+                onRemove={attachments.remove}
+                onRetry={attachments.retry}
               />
-            </>
-          ) : (
-            // Said rather than disabled: a greyed-out box reads as "not yet",
-            // and this one is never going to accept anything.
-            <Body size="xs" tone="faint" style={{ flex: 1, paddingVertical: space.sm }}>
-              This is a workflow step. It works from its definition, not from
-              messages.
-            </Body>
-          )}
-        </View>
+            }
+          />
+        ) : (
+          <ComposerNotice>
+            This is a workflow step. It works from its definition, not from
+            messages.
+          </ComposerNotice>
+        )}
       </KeyboardAvoidingView>
+      <AttachSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onPick={(source) => void attachments.pick(source)}
+      />
     </>
   );
 }
@@ -265,13 +282,13 @@ function StatusBar({ stream }: { stream: ReturnType<typeof useSessionStream>["st
           flexDirection: "row",
           gap: space.sm,
           alignItems: "center",
-          backgroundColor: c.keycap,
+          backgroundColor: isIOS ? c.keycap : c.surfaceHigh,
           paddingHorizontal: space.lg,
           paddingVertical: space.sm,
         }}
       >
         <ActivityIndicator size="small" color={c.legendDim} />
-        <Body size="xs" tone="dim">
+        <Body role="caption" tone="dim">
           Reconnecting — anything missed is replayed
         </Body>
       </View>
@@ -279,8 +296,14 @@ function StatusBar({ stream }: { stream: ReturnType<typeof useSessionStream>["st
   }
   if (stream.streamError) {
     return (
-      <View style={{ backgroundColor: c.redQuiet, padding: space.md }}>
-        <Body tone="danger" size="sm">
+      <View
+        style={{
+          backgroundColor: c.redQuiet,
+          paddingHorizontal: space.lg,
+          paddingVertical: isIOS ? 11 : 12,
+        }}
+      >
+        <Body role="subhead" tone="danger">
           {stream.streamError}
         </Body>
       </View>
@@ -301,9 +324,11 @@ function StatusBar({ stream }: { stream: ReturnType<typeof useSessionStream>["st
       }}
     >
       <ActivityIndicator size="small" color={c.liveInk} />
-      <Mono size="xs">{stream.progression.stage}</Mono>
+      <Mono size="xs" tone="live">
+        {stream.progression.stage}
+      </Mono>
       {stream.progression.detail ? (
-        <Body size="xs" tone="dim" numberOfLines={1} style={{ flex: 1 }}>
+        <Body role="caption" tone="dim" numberOfLines={1} style={{ flex: 1 }}>
           {stream.progression.detail}
         </Body>
       ) : null}
@@ -340,12 +365,32 @@ function ParkedAsks({
         return (
           <Card
             key={id ?? `ask-${i}`}
-            style={{ borderColor: c.accent, padding: space.lg, gap: space.md }}
+            // The one card in the app with a border, and it is the tint at
+            // 1.5px: this is an agent that has stopped, and it has to read
+            // differently from every other card on the screen.
+            style={{
+              borderWidth: isIOS ? 1.5 : 1,
+              borderColor: c.accent,
+              borderRadius: radii.ask,
+              padding: space.lg,
+              gap: space.md,
+            }}
           >
-            <Body weight="600">{ask.question}</Body>
+            <View
+              style={{ flexDirection: "row", gap: space.sm, alignItems: "flex-start" }}
+            >
+              <CircleHelp
+                size={isIOS ? 19 : 20}
+                color={c.accent}
+                style={{ marginTop: 2 }}
+              />
+              <Body role="headline" style={{ flex: 1 }}>
+                {ask.question}
+              </Body>
+            </View>
 
             {id === undefined ? (
-              <Body size="sm" tone="faint">
+              <Body role="subhead" tone="faint">
                 Answer this one from the session in the web UI — it arrived without an
                 address to reply to.
               </Body>
@@ -368,11 +413,12 @@ function ParkedAsks({
                 }}
                 editable={busy !== id}
                 style={{
-                  backgroundColor: c.screen,
-                  borderRadius: radii.md,
-                  padding: space.md,
+                  backgroundColor: c.panelRaised,
+                  borderRadius: radii.block,
+                  paddingHorizontal: 13,
+                  paddingVertical: 11,
                   color: c.legend,
-                  fontSize: text.base,
+                  ...typeRamp.body,
                 }}
               />
             )}

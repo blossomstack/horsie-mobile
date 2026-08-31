@@ -1,6 +1,7 @@
 import { scopedUrl, send, unscopedUrl } from "./connection";
 import type {
   AgentView,
+  ArtifactRef,
   AuthStatus,
   AuthoredPluginView,
   CreateSessionRequest,
@@ -25,6 +26,7 @@ import type {
   ProviderView,
   RoutineView,
   RuntimeVendorConfigView,
+  SendMessageRequest,
   SessionAck,
   SettingsView,
   TokenPair,
@@ -138,11 +140,19 @@ export const api = {
     /** Send a message to one of a session's agents. `agentId` is not optional
      * in practice: a sub session is an agent, and leaving it out delivers
      * everything typed on a sub session's page to the main agent instead. */
-    send: (id: string, text: string, agentId?: string): Promise<SessionAck> =>
+    /** `artifacts` are ids already uploaded through `uploadArtifact` — the
+     * bytes went up separately, so sending stays a small JSON request and the
+     * composer can show a thumbnail while the turn is still being typed. */
+    send: (
+      id: string,
+      text: string,
+      agentId?: string,
+      artifacts: ArtifactRef[] = [],
+    ): Promise<SessionAck> =>
       scoped(
         `/sessions/${encodeURIComponent(id)}/messages` +
           (agentId ? `?aid=${encodeURIComponent(agentId)}` : ""),
-        post({ text }),
+        post({ text, artifacts } satisfies SendMessageRequest),
       ),
 
     /** Answer every pending ask at once; a partial set is refused by the server.
@@ -184,6 +194,12 @@ export const api = {
     /** Note that these have been opened. */
     markRead: (ids: string[]): Promise<Ack> =>
       scoped("/inbox/read", post({ ids } satisfies InboxMessageIds)),
+
+    /** Drop these from the inbox. An open ask among them is declined on the
+     * way out — deleting the question a agent is parked on would otherwise
+     * leave it parked on something nobody can answer any more. */
+    delete: (ids: string[]): Promise<Ack> =>
+      scoped("/inbox/delete", post({ ids } satisfies InboxMessageIds)),
 
     /** Answer a parked question, or say something to the agent behind a
      * notice. The message's own kind decides which. */

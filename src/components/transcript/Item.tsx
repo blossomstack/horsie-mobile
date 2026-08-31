@@ -8,7 +8,7 @@ import { Body, Mono } from "@/components/ui";
 import { buildSegments, type Segment, type TurnGroup } from "@/core/segments";
 import type { RenderedMessage } from "@/core/transcript";
 import { hookLine } from "@/core/hookText";
-import { radii, space, useColors } from "@/theme";
+import { isIOS, radii, space, typeRamp, useColors } from "@/theme";
 import { Markdown } from "./Markdown";
 import { Artifacts } from "./Artifacts";
 import { ToolCall } from "./ToolCall";
@@ -76,18 +76,30 @@ function UserTurn({ msg }: { msg: RenderedMessage }) {
       <Artifacts items={msg.artifacts} />
       {msg.text ? (
         <View
+          // iOS keeps the bubble a neutral raised surface and lets the tint
+          // mean "the agent needs you"; M3 tints what the person said, which
+          // is its own convention and the reason for the notched corner.
           style={{
-            backgroundColor: c.panelRaised,
-            borderRadius: radii.lg,
-            paddingHorizontal: space.md,
-            paddingVertical: space.sm,
+            backgroundColor: isIOS ? c.panelRaised : c.accentQuiet,
+            borderRadius: 20,
+            borderBottomRightRadius: isIOS ? 20 : 4,
+            paddingHorizontal: isIOS ? 14 : space.lg,
+            paddingVertical: isIOS ? 9 : space.md,
           }}
         >
-          <Body>{msg.text}</Body>
+          <Body
+            style={{
+              ...typeRamp.body,
+              lineHeight: isIOS ? 23 : 24,
+              color: isIOS ? c.legend : c.accentQuietInk,
+            }}
+          >
+            {msg.text}
+          </Body>
         </View>
       ) : null}
       {msg.queued ? (
-        <Body size="xs" tone="faint">
+        <Body role="micro" tone="faint" weight="400">
           queued
         </Body>
       ) : null}
@@ -151,7 +163,7 @@ function Marker({
       <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
         <View style={{ flex: 1, height: 1, backgroundColor: c.rule }} />
         {icon === "compaction" ? <Scissors size={12} color={c.legendFaint} /> : null}
-        <Body size="xs" tone="faint">
+        <Body role="caption" tone="faint">
           {text}
         </Body>
         <View style={{ flex: 1, height: 1, backgroundColor: c.rule }} />
@@ -159,8 +171,8 @@ function Marker({
       {open && detail ? (
         <View
           style={{
-            backgroundColor: c.screen,
-            borderRadius: radii.md,
+            backgroundColor: c.codeFill,
+            borderRadius: radii.block,
             padding: space.md,
             marginTop: space.sm,
           }}
@@ -183,15 +195,15 @@ function SubSessionMarker({ id, seed }: { id: string; seed: string }) {
           alignItems: "center",
           gap: space.sm,
           backgroundColor: c.accentQuiet,
-          borderRadius: radii.md,
+          borderRadius: radii.block,
           padding: space.md,
         }}
       >
-        <GitBranch size={14} color={c.accent} />
-        <Body size="sm" tone="accent" weight="600">
+        <GitBranch size={14} color={c.accentQuietInk} />
+        <Body role="subhead" weight="600" style={{ color: c.accentQuietInk }}>
           Branched a sub session
         </Body>
-        <Body size="xs" tone="faint">
+        <Body role="caption" tone="faint" numberOfLines={1} style={{ flex: 1 }}>
           {seed}
         </Body>
       </View>

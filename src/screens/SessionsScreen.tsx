@@ -1,15 +1,26 @@
-import { useCallback, useMemo } from "react";
-import { Alert, FlatList, RefreshControl, View , Pressable } from "react-native";
-import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
+import { useCallback, useLayoutEffect, useState } from "react";
+import { Alert, Pressable, RefreshControl, View } from "react-native";
+import Animated from "react-native-reanimated";
 import { useNavigation } from "@react-navigation/native";
-import { CornerDownRight, Plus, Trash2 } from "lucide-react-native";
-import { SessionStatusKind } from "@/api/types";
-import { Body, Card, Empty, Loading, Pill, ReadError, Row } from "@/components/ui";
+import { Check, Plus, Trash2 } from "lucide-react-native";
+import { SessionStatusKind, type SessionSummary } from "@/api/types";
+import {
+  Body,
+  Empty,
+  GroupedCell,
+  IconButton,
+  Loading,
+  Pill,
+  ReadError,
+  Row,
+} from "@/components/ui";
+import { ContextualAppBar } from "@/navigation/header";
 import { usePullRefresh } from "@/hooks/usePullRefresh";
+import { SwipeToDelete } from "@/components/SwipeToDelete";
 import { useDeleteSession, useSessionFeed, useSessions } from "@/hooks/useSessions";
-import { flattenSessions, type SessionRow } from "@/lib/sessionTree";
 import { relativeTime } from "@/lib/time";
-import { radii, space, useColors } from "@/theme";
+import { isIOS, radii, space, useColors } from "@/theme";
+import { useScreenScroll } from "@/navigation/scroll";
 
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/routes";
@@ -22,31 +33,73 @@ export default function SessionsScreen() {
   const { data, isLoading, isError, error, refetch } = useSessions();
   const pull = usePullRefresh(refetch);
   const remove = useDeleteSession();
+  const scroll = useScreenScroll();
   useSessionFeed();
 
-  const rows = useMemo(() => flattenSessions(data?.sessions ?? []), [data]);
+  // Android only. iOS has no multi-select idiom in a list like this — a swipe
+  // per row is the whole affordance there, and adding a second one would be
+  // adding a gesture the platform does not teach.
+  const [selection, setSelection] = useState<string[]>([]);
+  const selecting = !isIOS && selection.length > 0;
+
+  const sessions = data?.sessions ?? [];
+
+  // iOS puts a new session in the nav bar; Android keeps the FAB below. Set
+  // here rather than in the navigator because only this screen knows the
+  // action, and the navigator would have to learn one screen's business to
+  // render it.
+  useLayoutEffect(() => {
+    if (!isIOS) return;
+    navigation.setOptions({
+      headerRight: () => (
+        <IconButton
+          accessibilityLabel="New session"
+          fill="keycap"
+          onPress={() => navigation.navigate("NewSession")}
+        >
+          <Plus size={22} color={c.accent} />
+        </IconButton>
+      ),
+    });
+  }, [navigation, c.accent]);
+
+  // The contextual bar *replaces* the app bar rather than stacking under it,
+  // so the navigator's own header comes off while it is up.
+  useLayoutEffect(() => {
+    if (isIOS) return;
+    navigation.setOptions({ headerShown: !selecting });
+  }, [navigation, selecting]);
 
   // Asked before it happens, because there is no undo: the server drops the
   // session and its whole transcript, and a swipe is far too easy to make by
   // accident on a list you are scrolling.
   const confirmDelete = useCallback(
-    (row: SessionRow) => {
+    (chosen: SessionSummary[]) => {
+      const one = chosen.length === 1 ? chosen[0] : null;
       Alert.alert(
-        "Delete this session?",
-        `"${row.title}" and everything it recorded will be gone. This cannot be undone.`,
+        one ? "Delete this session?" : `Delete ${chosen.length} sessions?`,
+        one
+          ? `"${one.name ?? "Untitled session"}" and everything it recorded will be gone. This cannot be undone.`
+          : "They and everything they recorded will be gone. This cannot be undone.",
         [
           { text: "Cancel", style: "cancel" },
           {
             text: "Delete",
             style: "destructive",
-            onPress: () =>
-              remove.mutate(row.sessionId, {
-                onError: (e) =>
-                  Alert.alert(
-                    "Could not delete it",
-                    e instanceof Error ? e.message : "The server refused.",
-                  ),
-              }),
+            onPress: () => {
+              // One mutation per id: the server deletes one session per call,
+              // and there is no bulk route to pretend otherwise with.
+              for (const session of chosen) {
+                remove.mutate(session.id, {
+                  onError: (e) =>
+                    Alert.alert(
+                      "Could not delete it",
+                      e instanceof Error ? e.message : "The server refused.",
+                    ),
+                });
+              }
+              setSelection([]);
+            },
           },
         ],
       );
@@ -54,151 +107,179 @@ export default function SessionsScreen() {
     [remove],
   );
 
+  const toggleSelected = (id: string) =>
+    setSelection((current) =>
+      current.includes(id)
+        ? current.filter((other) => other !== id)
+        : [...current, id],
+    );
+
   if (isLoading) return <Loading />;
   if (isError) return <ReadError error={error} onRetry={() => void refetch()} />;
 
   return (
     <View style={{ flex: 1 }}>
-      <FlatList
-        contentContainerStyle={{ padding: space.lg }}
-        data={rows}
-        keyExtractor={(r) => r.key}
+      {/* Drawn over the app bar rather than by the navigator: selection is
+          this screen's state, and a navigator that could render it would have
+          to hold that state for it. */}
+      {selecting ? (
+        <ContextualAppBar
+          count={selection.length}
+          onClose={() => setSelection([])}
+          actions={
+            <IconButton
+              accessibilityLabel="Delete selected"
+              onPress={() =>
+                confirmDelete(sessions.filter((s) => selection.includes(s.id)))
+              }
+            >
+              <Trash2 size={24} color={c.red} />
+            </IconButton>
+          }
+        />
+      ) : null}
+      <Animated.FlatList
+        {...scroll}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={{
+          paddingHorizontal: space.lg,
+          paddingBottom: space.xxl * 2,
+        }}
+        data={sessions}
+        keyExtractor={(s) => s.id}
         refreshControl={
           <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} />
         }
         ListEmptyComponent={
-          <Empty title="No sessions" detail="Start one with the button below." />
+          <Empty
+            title="No sessions"
+            detail={
+              isIOS
+                ? "Start one with the button above."
+                : "Start one with the button below."
+            }
+          />
         }
-        renderItem={({ item, index }) => {
-          const card = (
-            <Card
-              style={{
-                marginTop: item.depth === 0 && index > 0 ? space.sm : 0,
-                marginLeft: item.depth * space.lg,
-                // A sub session is part of the session above it, so it shares
-                // that card's outline rather than starting a new one.
-                borderTopLeftRadius: item.depth ? 0 : radii.lg,
-                borderTopRightRadius: item.depth ? 0 : radii.lg,
-              }}
-            >
-              <SessionListRow row={item} />
-            </Card>
-          );
-          // Only whole sessions. A sub session row is addressed by its parent
-          // session's id plus its own agent id, so a delete swiped on one
-          // would take the parent and every other branch with it.
-          if (item.depth > 0) return card;
-          return (
-            <Swipeable
-              friction={2}
-              rightThreshold={40}
-              overshootRight={false}
-              renderRightActions={() => (
-                <DeleteAction
-                  offsetTop={index > 0 ? space.sm : 0}
-                  onPress={() => confirmDelete(item)}
+        renderItem={({ item, index }) => (
+          <GroupedCell
+            first={index === 0}
+            last={index === sessions.length - 1}
+            separate={!isIOS}
+            selected={selection.includes(item.id)}
+          >
+            {selecting ? (
+              <SessionListRow
+                session={item}
+                first={index === 0}
+                selected={selection.includes(item.id)}
+                onPress={() => toggleSelected(item.id)}
+                onLongPress={() => toggleSelected(item.id)}
+              />
+            ) : (
+              <SwipeToDelete
+                accessibilityLabel="Delete session"
+                onDelete={() => confirmDelete([item])}
+              >
+                <SessionListRow
+                  session={item}
+                  first={index === 0}
+                  onLongPress={isIOS ? undefined : () => toggleSelected(item.id)}
                 />
-              )}
-            >
-              {card}
-            </Swipeable>
-          );
-        }}
+              </SwipeToDelete>
+            )}
+          </GroupedCell>
+        )}
       />
 
-      <Pressable
-        onPress={() => navigation.navigate("NewSession")}
-        style={({ pressed }) => ({
-          position: "absolute",
-          right: space.lg,
-          bottom: space.lg,
-          width: 56,
-          height: 56,
-          borderRadius: 28,
-          backgroundColor: c.accent,
-          alignItems: "center",
-          justifyContent: "center",
-          opacity: pressed ? 0.85 : 1,
-        })}
-      >
-        <Plus size={26} color={c.accentInk} />
-      </Pressable>
+      {isIOS ? null : (
+        <Pressable
+          onPress={() => navigation.navigate("NewSession")}
+          accessibilityRole="button"
+          accessibilityLabel="New session"
+          android_ripple={{ color: c.ripple }}
+          style={{
+            position: "absolute",
+            right: space.lg,
+            bottom: space.lg,
+            width: 56,
+            height: 56,
+            borderRadius: radii.card,
+            backgroundColor: c.accentQuiet,
+            alignItems: "center",
+            justifyContent: "center",
+            elevation: 3,
+            shadowColor: "#000",
+            shadowOpacity: 0.22,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 3 },
+          }}
+        >
+          <Plus size={24} color={c.accentQuietInk} />
+        </Pressable>
+      )}
     </View>
   );
 }
 
-/** What a swipe uncovers. Deliberately one action and deliberately loud: it is
- * the only irreversible thing this app can do. */
-function DeleteAction({
-  offsetTop,
+/**
+ * One session.
+ *
+ * Sub sessions are not rows here any more. They were an indent that repeated
+ * the parent's title, could not be deleted (a delete swiped on one would take
+ * the parent and every other branch with it) and had a whole picture of their
+ * own one tap away — the graph is where a session's shape belongs.
+ */
+function SessionListRow({
+  session,
+  first,
+  selected,
   onPress,
+  onLongPress,
 }: {
-  offsetTop: number;
-  onPress: () => void;
+  session: SessionSummary;
+  first: boolean;
+  selected?: boolean;
+  /** Given only while selecting, when a tap picks rather than opens. */
+  onPress?: () => void;
+  onLongPress?: () => void;
 }) {
-  const c = useColors();
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel="Delete session"
-      style={({ pressed }) => ({
-        width: 76,
-        marginTop: offsetTop,
-        marginLeft: space.sm,
-        borderRadius: radii.lg,
-        // The palette has no ink-on-red, so this is the pair it does define —
-        // the same one the transcript's error banner uses — with the strong
-        // red kept as an outline so the panel reads as an action rather than
-        // as a notice.
-        backgroundColor: c.redQuiet,
-        borderWidth: 1,
-        borderColor: c.red,
-        alignItems: "center",
-        justifyContent: "center",
-        gap: space.xs,
-        opacity: pressed ? 0.8 : 1,
-      })}
-    >
-      <Trash2 size={18} color={c.redInk} />
-      <Body size="xs" tone="danger" weight="600">
-        Delete
-      </Body>
-    </Pressable>
-  );
-}
-
-function SessionListRow({ row }: { row: SessionRow }) {
   const navigation = useNavigation<Nav>();
   const c = useColors();
-  const { session, sub } = row;
 
   return (
     <Row
-      first
-      onPress={() =>
-        navigation.navigate("Session", { id: row.sessionId, agent: row.agentId })
-      }
+      first={first || !isIOS}
+      onPress={onPress ?? (() => navigation.navigate("Session", { id: session.id }))}
+      onLongPress={onLongPress}
     >
-      <View style={{ flexDirection: "row", gap: space.sm, alignItems: "flex-start" }}>
-        {row.depth > 0 ? (
-          <CornerDownRight size={14} color={c.legendFaint} style={{ marginTop: 3 }} />
+      <View style={{ flexDirection: "row", gap: space.md, alignItems: "center" }}>
+        {selected ? (
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              backgroundColor: c.accent,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Check size={22} color={c.accentInk} />
+          </View>
         ) : null}
         <View style={{ flex: 1, gap: space.xs }}>
-          <Body weight="600" numberOfLines={1}>
-            {row.title}
+        <Body role="headline" numberOfLines={1}>
+          {session.name ?? "Untitled session"}
+        </Body>
+        <View
+          style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}
+        >
+          <StatusPill status={session.status} />
+          {session.workflow ? <Pill label={session.workflow} /> : null}
+          <Body role="caption" tone="faint">
+            {relativeTime(session.createdAt)}
           </Body>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-            {sub ? (
-              <StatusPill status={sub.status as SessionStatusKind} />
-            ) : (
-              <StatusPill status={session.status} />
-            )}
-            {session.workflow ? <Pill label={session.workflow} /> : null}
-            <Body tone="faint" size="xs">
-              {relativeTime(sub ? sub.lastActivityMs : session.createdAt)}
-            </Body>
-          </View>
+        </View>
         </View>
       </View>
     </Row>

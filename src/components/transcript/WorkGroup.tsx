@@ -58,11 +58,16 @@ export function WorkGroup({
         ) : (
           <ChevronRight size={14} color={c.legendFaint} />
         )}
-        <Body size="sm" tone={live ? "accent" : "faint"} style={{ flex: 1 }} numberOfLines={1}>
+        <Body
+          role="subhead"
+          tone={live ? "accent" : "faint"}
+          style={{ flex: 1 }}
+          numberOfLines={1}
+        >
           {running?.kind === "tool" ? `Running ${running.call.name}` : summarise(items, live)}
         </Body>
         {took ? (
-          <Body size="xs" tone="faint">
+          <Body role="caption" tone="faint">
             {took}
           </Body>
         ) : null}
@@ -131,13 +136,13 @@ function WorkItemView({
           style={{
             flexDirection: "row",
             gap: space.sm,
-            backgroundColor: c.screen,
-            borderRadius: radii.md,
+            backgroundColor: c.codeFill,
+            borderRadius: radii.block,
             padding: space.md,
           }}
         >
           <Brain size={14} color={c.legendFaint} style={{ marginTop: 2 }} />
-          <Body size="sm" tone="dim" style={{ flex: 1 }}>
+          <Body role="subhead" tone="dim" style={{ flex: 1 }}>
             {item.text}
           </Body>
         </View>
@@ -145,11 +150,11 @@ function WorkItemView({
     case "subagent":
       return (
         <Card style={{ padding: space.md, gap: space.xs }}>
-          <Body size="sm" weight="600">
+          <Body role="subhead" weight="600">
             {item.result.title}
           </Body>
           <Mono size="xs">{item.result.status}</Mono>
-          <Body size="sm" tone="dim" numberOfLines={6}>
+          <Body role="subhead" tone="dim" numberOfLines={6}>
             {item.result.text}
           </Body>
         </Card>

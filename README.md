@@ -4,9 +4,11 @@ iOS and Android app for [horsie](https://horsie.dev): inbox, sessions and transc
 
 Point it at any horsie server you can reach. It shows what your agents are saying and asking, lets you answer a question that has parked one, and starts a session. Everything else — agents, environments, workflows, routines, and all settings — is read-only; the web UI is where a deployment is changed.
 
-| <img src="docs/screenshots/inbox.png" width="200" alt="The inbox"> | <img src="docs/screenshots/sessions.png" width="200" alt="The session list"> | <img src="docs/screenshots/library.png" width="200" alt="The library"> | <img src="docs/screenshots/settings.png" width="200" alt="Settings"> |
+One app, two native themes — iOS 26 and Material 3 — each with a light and a dark exposure and a tint you pick. Which one you get is the platform, never a setting.
+
+| <img src="docs/screenshots/ios-inbox.png" width="200" alt="The inbox on iOS"> | <img src="docs/screenshots/android-inbox.png" width="200" alt="The inbox on Android"> | <img src="docs/screenshots/android-library.png" width="200" alt="The library on Android"> | <img src="docs/screenshots/android-appearance.png" width="200" alt="The tint picker"> |
 |:--:|:--:|:--:|:--:|
-| Inbox | Sessions | Library | Settings |
+| Inbox · iOS | Inbox · Android | Library | Tint |
 
 ## Status
 
@@ -31,6 +33,8 @@ npm run ios      # or: npm run android
 ```
 
 Bare React Native — no Expo. `ios/` and `android/` are in the repo and are yours to edit.
+
+Android needs an SDK on the path: set `ANDROID_HOME`, or put `sdk.dir=/path/to/sdk` in `android/local.properties`. Attachments use the camera and the photo picker, so a first run will ask for those permissions.
 
 Sign-in uses horsie's device flow: the app shows a code, opens your browser, and you approve it there. Nothing is typed twice and no password touches the phone.
 

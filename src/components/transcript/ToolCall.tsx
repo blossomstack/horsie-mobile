@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { ChevronDown, ChevronRight, CircleAlert, Loader } from "lucide-react-native";
-import { Body, Mono } from "@/components/ui";
+import { Body, Mono, TextAction } from "@/components/ui";
 import type { RenderedToolCall } from "@/core/transcript";
 import { duration } from "@/lib/time";
-import { radii, space, useColors } from "@/theme";
+import { isIOS, radii, space, useColors } from "@/theme";
 import { Artifacts } from "./Artifacts";
 
 /** How much of a tool result to show before it has to be asked for. */
@@ -27,10 +27,10 @@ export function ToolCall({ call, startedAtMs }: { call: RenderedToolCall; starte
   return (
     <View
       style={{
-        backgroundColor: c.screen,
-        borderRadius: radii.md,
-        borderWidth: 1,
-        borderColor: call.isError ? c.redQuiet : c.edge,
+        backgroundColor: c.panelRaised,
+        borderRadius: radii.block,
+        borderWidth: isIOS ? StyleSheet.hairlineWidth : 1,
+        borderColor: call.isError ? c.red : c.edge,
         overflow: "hidden",
       }}
     >
@@ -40,7 +40,8 @@ export function ToolCall({ call, startedAtMs }: { call: RenderedToolCall; starte
           flexDirection: "row",
           alignItems: "center",
           gap: space.sm,
-          padding: space.md,
+          paddingHorizontal: space.md,
+          paddingVertical: 11,
         }}
       >
         {call.running ? (
@@ -52,16 +53,16 @@ export function ToolCall({ call, startedAtMs }: { call: RenderedToolCall; starte
         ) : (
           <ChevronRight size={14} color={c.legendFaint} />
         )}
-        <Body size="sm" weight="600" style={{ flex: 1 }} numberOfLines={1}>
+        <Body role="subhead" weight="600" style={{ flex: 1 }} numberOfLines={1}>
           {call.name}
         </Body>
         {call.hooks.length > 0 ? (
-          <Body size="xs" tone="faint">
+          <Body role="caption" tone="faint">
             {call.hooks.length} hook{call.hooks.length === 1 ? "" : "s"}
           </Body>
         ) : null}
         {took ? (
-          <Body size="xs" tone="faint">
+          <Body role="caption" tone="faint">
             {took}
           </Body>
         ) : null}
@@ -89,16 +90,16 @@ export function ToolCall({ call, startedAtMs }: { call: RenderedToolCall; starte
         >
           <Mono size="xs">{shown}</Mono>
           {truncated ? (
-            <Pressable onPress={() => setOpen(true)}>
-              <Body size="xs" tone="accent">
-                {lines.length - PREVIEW_LINES} more lines
-              </Body>
-            </Pressable>
+            <TextAction
+              role="caption"
+              label={`${lines.length - PREVIEW_LINES} more lines`}
+              onPress={() => setOpen(true)}
+            />
           ) : null}
         </View>
       ) : call.running ? (
         <View style={{ paddingHorizontal: space.md, paddingBottom: space.md }}>
-          <Body size="xs" tone="dim">
+          <Body role="caption" tone="dim">
             running…
           </Body>
         </View>

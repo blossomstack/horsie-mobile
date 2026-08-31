@@ -1,4 +1,9 @@
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { api, type InboxScope } from "@/api/client";
 import { useConnection } from "@/state/connection";
 
@@ -42,6 +47,22 @@ export function useInbox(scope: InboxScope = "all") {
 export function useInboxCounts() {
   const { data } = useInbox("all");
   return { unread: data?.unread ?? 0, openAsks: data?.openAsks ?? 0 };
+}
+
+/**
+ * Drop one or more messages.
+ *
+ * Every page is invalidated on success rather than the row being spliced out
+ * of one: the counts live on the same response as the rows, and a client that
+ * removed a row without re-reading them would show a badge for a question it
+ * has just deleted.
+ */
+export function useDeleteInbox() {
+  const invalidate = useInvalidateInbox();
+  return useMutation({
+    mutationFn: (ids: string[]) => api.inbox.delete(ids),
+    onSuccess: () => invalidate(),
+  });
 }
 
 /** Drop every cached inbox page — after a reply, a read, or a delete. */

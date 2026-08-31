@@ -1,12 +1,16 @@
+import type { ComponentType, ReactNode } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { StyleSheet } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Inbox, MessagesSquare, Boxes, Settings } from "lucide-react-native";
 import { Loading } from "@/components/ui";
 import { useInboxCounts } from "@/hooks/useInbox";
 import { useConnection } from "@/state/connection";
-import { useColors, useTheme } from "@/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { isIOS, radii, space, typeRamp, useColors, useTheme } from "@/theme";
+import { TopAppBar } from "./header";
+import { ScreenScrollProvider } from "./scroll";
 import type { RootStackParamList, TabParamList } from "./routes";
 
 import ConnectScreen from "@/screens/ConnectScreen";
@@ -37,63 +41,161 @@ import SettingsMcpScreen from "@/screens/SettingsMcpScreen";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
+const TabStack = createNativeStackNavigator();
+
+/**
+ * The header a tab screen wears.
+ *
+ * iOS asks the native stack for a large title and gets the collapse for free —
+ * UIKit owns the animation, and nothing in JS could match it. Android has no
+ * medium app bar in `native-stack` at all, so it draws its own; that is the
+ * whole reason each tab is its own one-screen stack rather than four screens
+ * under one shared header, which could only ever show one title.
+ */
+function tabHeaderOptions(title: string) {
+  if (isIOS) {
+    return {
+      title,
+      headerLargeTitle: true,
+      headerLargeTitleShadowVisible: false,
+    };
+  }
+  return {
+    title,
+    header: () => <TopAppBar title={title} />,
+  };
+}
+
+/** One tab: its own stack, so its header is native and its scroll offset is
+ * its own. Routes are unchanged — the deep screens still live on the root. */
+function tabScreen(name: string, title: string, component: ComponentType) {
+  function TabRoot() {
+    const c = useColors();
+    return (
+      <ScreenScrollProvider>
+        <TabStack.Navigator
+          screenOptions={{
+            headerStyle: { backgroundColor: c.chassis },
+            headerTintColor: c.legend,
+            headerTitleStyle: { color: c.legend },
+            headerLargeTitleStyle: { color: c.legend },
+            contentStyle: { backgroundColor: c.chassis },
+          }}
+        >
+          <TabStack.Screen
+            name={name}
+            component={component}
+            options={tabHeaderOptions(title)}
+          />
+        </TabStack.Navigator>
+      </ScreenScrollProvider>
+    );
+  }
+  TabRoot.displayName = `${name}Tab`;
+  return TabRoot;
+}
+
+const InboxTab = tabScreen("InboxRoot", "Inbox", InboxScreen);
+const SessionsTab = tabScreen("SessionsRoot", "Sessions", SessionsScreen);
+const LibraryTab = tabScreen("LibraryRoot", "Library", LibraryScreen);
+const SettingsTab = tabScreen("SettingsRoot", "Settings", SettingsScreen);
+
+/**
+ * The tab bar's active state, drawn per platform.
+ *
+ * Android's M3 bar marks the active tab with a 64×32 pill behind the glyph;
+ * iOS marks it by tinting the glyph and nothing else. Both are the icon slot,
+ * so both are drawn here rather than by two different navigator options.
+ */
+function TabIcon({
+  children,
+  focused,
+}: {
+  children: ReactNode;
+  focused: boolean;
+}) {
+  const c = useColors();
+  if (isIOS) return <>{children}</>;
+  return (
+    <View
+      style={{
+        width: 64,
+        height: 32,
+        borderRadius: radii.indicator,
+        backgroundColor: focused ? c.accentQuiet : "transparent",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {children}
+    </View>
+  );
+}
 
 function Tabs() {
   const c = useColors();
+  const insets = useSafeAreaInsets();
   const { openAsks } = useInboxCounts();
+  const iconSize = isIOS ? 26 : 24;
+
+  const tabs = [
+    { name: "Inbox" as const, title: "Inbox", component: InboxTab, glyph: Inbox },
+    { name: "SessionList" as const, title: "Sessions", component: SessionsTab, glyph: MessagesSquare },
+    { name: "Library" as const, title: "Library", component: LibraryTab, glyph: Boxes },
+    { name: "Settings" as const, title: "Settings", component: SettingsTab, glyph: Settings },
+  ];
 
   return (
     <Tab.Navigator
       screenOptions={{
-        headerStyle: {
-          backgroundColor: c.chassis,
-          borderBottomWidth: StyleSheet.hairlineWidth,
-          borderBottomColor: c.edge,
-        },
-        headerTintColor: c.legend,
+        headerShown: false,
         sceneStyle: { backgroundColor: c.chassis },
         tabBarStyle: {
-          backgroundColor: c.chassis,
-          borderTopWidth: StyleSheet.hairlineWidth,
+          // The glass fill is a flat colour, not a blur: RN ships no blur view
+          // and the handoff names this exact fallback. It is opaque enough to
+          // carry a label over any content that scrolls beneath it.
+          backgroundColor: isIOS ? c.glass : c.chassis,
+          borderTopWidth: isIOS ? StyleSheet.hairlineWidth : 0,
           borderTopColor: c.edge,
+          // The bar is 49pt (iOS) or 80dp (Android) of *content*; the home
+          // indicator's inset is added rather than eaten, or the labels sit
+          // under it on every phone that has one.
+          height: (isIOS ? 49 : 80) + insets.bottom,
+          paddingBottom: insets.bottom,
+          paddingTop: isIOS ? 0 : space.md,
         },
-        tabBarActiveTintColor: c.accent,
+        tabBarActiveTintColor: isIOS ? c.accent : c.legend,
         tabBarInactiveTintColor: c.legendFaint,
+        tabBarLabelStyle: isIOS
+          ? { fontSize: 10, lineHeight: 12, fontWeight: "600" }
+          : { ...typeRamp.micro },
+        tabBarIconStyle: isIOS ? undefined : { height: 32, width: 64 },
       }}
     >
-      <Tab.Screen
-        name="Inbox"
-        component={InboxScreen}
-        options={{
-          tabBarIcon: ({ color, size }) => <Inbox size={size} color={color} />,
-          // Open asks, not unread: an unread notice costs nothing, an open ask
-          // is an agent standing still.
-          tabBarBadge: openAsks > 0 ? openAsks : undefined,
-          tabBarBadgeStyle: { backgroundColor: c.accent, color: c.accentInk },
-        }}
-      />
-      <Tab.Screen
-        name="SessionList"
-        component={SessionsScreen}
-        options={{
-          title: "Sessions",
-          tabBarIcon: ({ color, size }) => <MessagesSquare size={size} color={color} />,
-        }}
-      />
-      <Tab.Screen
-        name="Library"
-        component={LibraryScreen}
-        options={{
-          tabBarIcon: ({ color, size }) => <Boxes size={size} color={color} />,
-        }}
-      />
-      <Tab.Screen
-        name="Settings"
-        component={SettingsScreen}
-        options={{
-          tabBarIcon: ({ color, size }) => <Settings size={size} color={color} />,
-        }}
-      />
+      {tabs.map((tab) => (
+        <Tab.Screen
+          key={tab.name}
+          name={tab.name}
+          component={tab.component}
+          options={{
+            title: tab.title,
+            tabBarIcon: ({ color, focused }) => (
+              <TabIcon focused={focused}>
+                <tab.glyph size={iconSize} color={color} />
+              </TabIcon>
+            ),
+            // Open asks, not unread: an unread notice costs nothing, an open
+            // ask is an agent standing still.
+            tabBarBadge:
+              tab.name === "Inbox" && openAsks > 0 ? openAsks : undefined,
+            tabBarBadgeStyle: {
+              backgroundColor: c.accent,
+              color: c.accentInk,
+              fontWeight: "700",
+            },
+          }}
+        />
+      ))}
     </Tab.Navigator>
   );
 }
@@ -137,7 +239,8 @@ export function Navigation() {
         screenOptions={{
           headerStyle: { backgroundColor: colors.chassis },
           headerTintColor: colors.legend,
-          headerTitleStyle: { color: colors.legend },
+          headerTitleStyle: { color: colors.legend, ...typeRamp.headline },
+          headerShadowVisible: false,
           contentStyle: { backgroundColor: colors.chassis },
           headerBackButtonDisplayMode: "minimal",
         }}
