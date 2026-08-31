@@ -162,7 +162,7 @@ function Toggle({
       accessibilityState={{ selected: on }}
       style={{
         backgroundColor: on ? c.accentQuiet : c.keycap,
-        borderRadius: radii.sm,
+        borderRadius: radii.pill,
         paddingHorizontal: space.md,
         paddingVertical: space.sm,
       }}
@@ -354,7 +354,7 @@ function RunList({ graph, sessionId }: { graph: WorkflowRunGraph; sessionId: str
                   alignItems: "center",
                   gap: space.xs,
                   backgroundColor: c.keycap,
-                  borderRadius: radii.sm,
+                  borderRadius: radii.pill,
                   paddingHorizontal: space.sm,
                   paddingVertical: space.xs,
                 }}

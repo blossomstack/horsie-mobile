@@ -158,7 +158,7 @@ export default function Connect() {
                 backgroundColor: c.panel,
                 borderWidth: 1,
                 borderColor: c.edge,
-                borderRadius: radii.md,
+                borderRadius: radii.block,
                 padding: space.md,
                 color: c.legend,
                 fontSize: text.base,

@@ -12,26 +12,26 @@ import {
   Server,
   Sparkles,
 } from "lucide-react-native";
-import { Body, Card, Mono, Row } from "@/components/ui";
+import { Body, Card, Mono, Row, SectionHeader } from "@/components/ui";
 import { useConnection } from "@/state/connection";
-import { space, SKINS, useColors, useTheme, type ThemeChoice } from "@/theme";
+import {
+  CHOICE_LABEL,
+  isIOS,
+  space,
+  TINT_LABEL,
+  useColors,
+  useTheme,
+} from "@/theme";
 
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/routes";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-/** What each exposure is called on the row that summarises it. */
-const CHOICE_LABEL: Record<ThemeChoice, string> = {
-  system: "System",
-  light: "Light",
-  dark: "Dark",
-};
-
 export default function SettingsScreen() {
   const navigation = useNavigation<Nav>();
   const c = useColors();
-  const { choice, skin } = useTheme();
+  const { choice, tint } = useTheme();
   const { server, project, signOut } = useConnection();
 
   const readOnly = [
@@ -44,14 +44,18 @@ export default function SettingsScreen() {
   ] as const;
 
   return (
-    <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg }}>
+    <ScrollView
+      contentContainerStyle={{ paddingVertical: space.lg, gap: space.xl }}
+    >
       <Section title="Connected to">
         <Card>
           <Row first>
             <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
               <Server size={18} color={c.legendDim} />
               <View style={{ flex: 1 }}>
-                <Body weight="600">{server?.label ?? "Not connected"}</Body>
+                <Body role="headline">
+                  {server?.label ?? "Not connected"}
+                </Body>
                 {server ? <Mono size="xs">{server.baseUrl}</Mono> : null}
               </View>
             </View>
@@ -59,9 +63,13 @@ export default function SettingsScreen() {
           <Row onPress={() => navigation.navigate("Projects")}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
               <FolderTree size={18} color={c.legendDim} />
-              <Body style={{ flex: 1 }}>Project</Body>
-              <Body tone="dim">{project ?? "none"}</Body>
-              <ChevronRight size={18} color={c.legendFaint} />
+              <Body role="body" style={{ flex: 1 }}>
+                Project
+              </Body>
+              <Body role="body" tone="dim">
+                {project ?? "none"}
+              </Body>
+              <ChevronRight size={isIOS ? 14 : 18} color={c.legendFaint} />
             </View>
           </Row>
         </Card>
@@ -74,11 +82,13 @@ export default function SettingsScreen() {
           <Row first onPress={() => navigation.push("SettingsAppearance")}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
               <Palette size={18} color={c.legendDim} />
-              <Body style={{ flex: 1 }}>Appearance</Body>
-              <Body tone="dim">
-                {`${CHOICE_LABEL[choice]} · ${SKINS.find((s) => s.key === skin)?.label ?? skin}`}
+              <Body role="body" style={{ flex: 1 }}>
+                Appearance
               </Body>
-              <ChevronRight size={18} color={c.legendFaint} />
+              <Body role="body" tone="dim">
+                {`${CHOICE_LABEL[choice]} · ${TINT_LABEL[tint]}`}
+              </Body>
+              <ChevronRight size={isIOS ? 14 : 18} color={c.legendFaint} />
             </View>
           </Row>
         </Card>
@@ -90,18 +100,22 @@ export default function SettingsScreen() {
             <Row key={entry.route} first={i === 0} onPress={() => navigation.push(entry.route)}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
                 <entry.icon size={18} color={c.legendDim} />
-                <Body style={{ flex: 1 }}>{entry.label}</Body>
-                <ChevronRight size={18} color={c.legendFaint} />
+                <Body role="body" style={{ flex: 1 }}>
+                  {entry.label}
+                </Body>
+                <ChevronRight size={isIOS ? 14 : 18} color={c.legendFaint} />
               </View>
             </Row>
           ))}
         </Card>
-        <Body tone="faint" size="sm">
+        <Body role="subhead" tone="faint">
           Read-only. There is no account or admin surface here by design.
         </Body>
       </Section>
 
-      <Card>
+      {/* Its own card, outside every section: the only red on the screen, and
+          the only row here that ends something rather than opening it. */}
+      <Card style={{ marginHorizontal: space.lg }}>
         <Row
           first
           onPress={() =>
@@ -123,7 +137,7 @@ export default function SettingsScreen() {
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
             <LogOut size={18} color={c.redInk} />
-            <Body tone="danger" weight="600">
+            <Body role="headline" tone="danger">
               Sign out
             </Body>
           </View>
@@ -133,13 +147,20 @@ export default function SettingsScreen() {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** A titled group of rows, inset from the screen edge on both platforms. */
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <View style={{ gap: space.sm }}>
-      <Body tone="faint" size="xs" weight="700" style={{ letterSpacing: 0.8 }}>
-        {title.toUpperCase()}
-      </Body>
-      {children}
+      <SectionHeader>{title}</SectionHeader>
+      <View style={{ paddingHorizontal: space.lg, gap: space.sm }}>
+        {children}
+      </View>
     </View>
   );
 }

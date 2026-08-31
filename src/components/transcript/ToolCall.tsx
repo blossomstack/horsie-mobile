@@ -27,8 +27,8 @@ export function ToolCall({ call, startedAtMs }: { call: RenderedToolCall; starte
   return (
     <View
       style={{
-        backgroundColor: c.screen,
-        borderRadius: radii.md,
+        backgroundColor: c.codeFill,
+        borderRadius: radii.block,
         borderWidth: 1,
         borderColor: call.isError ? c.redQuiet : c.edge,
         overflow: "hidden",

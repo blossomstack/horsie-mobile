@@ -224,7 +224,7 @@ function Transcript({
                   flex: 1,
                   maxHeight: 120,
                   backgroundColor: c.panel,
-                  borderRadius: radii.md,
+                  borderRadius: radii.block,
                   borderWidth: 1,
                   borderColor: c.edge,
                   paddingHorizontal: space.md,
@@ -368,8 +368,8 @@ function ParkedAsks({
                 }}
                 editable={busy !== id}
                 style={{
-                  backgroundColor: c.screen,
-                  borderRadius: radii.md,
+                  backgroundColor: c.codeFill,
+                  borderRadius: radii.block,
                   padding: space.md,
                   color: c.legend,
                   fontSize: text.base,

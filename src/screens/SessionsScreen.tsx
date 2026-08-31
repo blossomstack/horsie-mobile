@@ -77,8 +77,8 @@ export default function SessionsScreen() {
                 marginLeft: item.depth * space.lg,
                 // A sub session is part of the session above it, so it shares
                 // that card's outline rather than starting a new one.
-                borderTopLeftRadius: item.depth ? 0 : radii.lg,
-                borderTopRightRadius: item.depth ? 0 : radii.lg,
+                borderTopLeftRadius: item.depth ? 0 : radii.card,
+                borderTopRightRadius: item.depth ? 0 : radii.card,
               }}
             >
               <SessionListRow row={item} />
@@ -146,7 +146,7 @@ function DeleteAction({
         width: 76,
         marginTop: offsetTop,
         marginLeft: space.sm,
-        borderRadius: radii.lg,
+        borderRadius: radii.card,
         // The palette has no ink-on-red, so this is the pair it does define —
         // the same one the transcript's error banner uses — with the strong
         // red kept as an outline so the panel reads as an action rather than

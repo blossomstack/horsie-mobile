@@ -82,7 +82,7 @@ function ScopeBar({
           <View
             key={s.key}
             style={{
-              borderRadius: radii.sm,
+              borderRadius: radii.pill,
               overflow: "hidden",
               backgroundColor: on ? c.accentQuiet : c.keycap,
             }}

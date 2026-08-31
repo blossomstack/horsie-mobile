@@ -23,7 +23,7 @@ export function Markdown({ children }: { children: string }) {
       paragraph: { paddingVertical: space.xs },
       code: {
         backgroundColor: c.codeFill,
-        borderRadius: radii.sm,
+        borderRadius: radii.pill,
         padding: space.md,
       },
       codespan: {
@@ -33,8 +33,8 @@ export function Markdown({ children }: { children: string }) {
         fontSize: text.sm,
       },
       blockquote: {
-        backgroundColor: c.screen,
-        borderLeftColor: c.ruleStrong,
+        backgroundColor: c.codeFill,
+        borderLeftColor: c.legendFaint,
         borderLeftWidth: 3,
         paddingHorizontal: space.md,
         marginLeft: 0,

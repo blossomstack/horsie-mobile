@@ -112,7 +112,7 @@ function Chip({
       onPress={onPress}
       style={{
         backgroundColor: on ? c.accentQuiet : c.keycap,
-        borderRadius: radii.sm,
+        borderRadius: radii.pill,
         paddingHorizontal: space.md,
         paddingVertical: space.sm,
       }}

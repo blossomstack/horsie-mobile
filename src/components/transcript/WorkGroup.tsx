@@ -131,8 +131,8 @@ function WorkItemView({
           style={{
             flexDirection: "row",
             gap: space.sm,
-            backgroundColor: c.screen,
-            borderRadius: radii.md,
+            backgroundColor: c.codeFill,
+            borderRadius: radii.block,
             padding: space.md,
           }}
         >

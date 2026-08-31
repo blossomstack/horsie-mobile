@@ -39,7 +39,7 @@ export async function writeItem(key: string, value: string): Promise<void> {
   await Keychain.setGenericPassword(ACCOUNT, value, { service: key });
 }
 
-async function deleteItem(key: string): Promise<void> {
+export async function deleteItem(key: string): Promise<void> {
   await Keychain.resetGenericPassword({ service: key });
 }
 

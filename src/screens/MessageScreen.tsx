@@ -119,7 +119,7 @@ export default function MessageScreen() {
                 style={{
                   minHeight: 90,
                   backgroundColor: c.panel,
-                  borderRadius: radii.md,
+                  borderRadius: radii.block,
                   borderWidth: 1,
                   borderColor: c.edge,
                   padding: space.md,

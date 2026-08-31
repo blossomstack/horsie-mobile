@@ -78,7 +78,7 @@ function UserTurn({ msg }: { msg: RenderedMessage }) {
         <View
           style={{
             backgroundColor: c.panelRaised,
-            borderRadius: radii.lg,
+            borderRadius: radii.card,
             paddingHorizontal: space.md,
             paddingVertical: space.sm,
           }}
@@ -159,8 +159,8 @@ function Marker({
       {open && detail ? (
         <View
           style={{
-            backgroundColor: c.screen,
-            borderRadius: radii.md,
+            backgroundColor: c.codeFill,
+            borderRadius: radii.block,
             padding: space.md,
             marginTop: space.sm,
           }}
@@ -183,7 +183,7 @@ function SubSessionMarker({ id, seed }: { id: string; seed: string }) {
           alignItems: "center",
           gap: space.sm,
           backgroundColor: c.accentQuiet,
-          borderRadius: radii.md,
+          borderRadius: radii.block,
           padding: space.md,
         }}
       >
