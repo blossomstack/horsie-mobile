@@ -4,6 +4,11 @@ iOS and Android app for [horsie](https://horsie.dev): inbox, sessions and transc
 
 Point it at any horsie server you can reach. It shows what your agents are saying and asking, lets you answer a question that has parked one, and starts a session. Everything else — agents, environments, workflows, routines, and all settings — is read-only; the web UI is where a deployment is changed.
 
+|  |  |  |  |
+|:--:|:--:|:--:|:--:|
+| ![The inbox](docs/screenshots/inbox.png) | ![The session list](docs/screenshots/sessions.png) | ![The library](docs/screenshots/library.png) | ![Settings](docs/screenshots/settings.png) |
+| Inbox | Sessions | Library | Settings |
+
 ## Status
 
 Early. Not yet in either store.
