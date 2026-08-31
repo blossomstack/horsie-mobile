@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useColorScheme } from "react-native";
-import * as SecureStore from "expo-secure-store";
+import { readItem, writeItem } from "@/api/tokens";
 import { dark, light, type Palette, type ThemeChoice } from "./tokens";
 
 export { radii, space, text } from "./tokens";
@@ -31,7 +31,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [choice, setChoiceState] = useState<ThemeChoice>("system");
 
   useEffect(() => {
-    void SecureStore.getItemAsync(CHOICE_KEY).then((stored) => {
+    void readItem(CHOICE_KEY).then((stored) => {
       if (stored === "light" || stored === "dark" || stored === "system") {
         setChoiceState(stored);
       }
@@ -46,7 +46,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       choice,
       setChoice: (next) => {
         setChoiceState(next);
-        void SecureStore.setItemAsync(CHOICE_KEY, next);
+        void writeItem(CHOICE_KEY, next);
       },
     };
   }, [choice, system]);

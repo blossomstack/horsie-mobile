@@ -22,8 +22,11 @@ There is no account or admin surface, by design.
 
 ```bash
 npm install
+cd ios && pod install && cd ..
 npm run ios      # or: npm run android
 ```
+
+Bare React Native — no Expo. `ios/` and `android/` are in the repo and are yours to edit.
 
 Sign-in uses horsie's device flow: the app shows a code, opens your browser, and you approve it there. Nothing is typed twice and no password touches the phone.
 
@@ -41,12 +44,7 @@ To move to a newer horsie, change the SHA in `schemas/HORSIE_REF` and run the fi
 
 ## Shipping
 
-Builds run on EAS, from `eas.json`. Two things have to be done by a human once, because both need an Expo or Apple login that CI cannot produce:
-
-1. `eas init` — writes the real project id into `app.json` (`extra.eas.projectId`), which is a placeholder until then.
-2. Add `EXPO_TOKEN` to the repo's Actions secrets, and put the App Store Connect app id into `eas.json` under `submit.production.ios.ascAppId`.
-
-After that, `Build` runs from the Actions tab against the `preview` or `production` profile, and any `v*` tag builds production automatically.
+Release builds are not wired up yet. Archiving from Xcode works today; a signed pipeline needs Apple credentials that only a human can produce, and it is tracked rather than stubbed.
 
 ## Licence
 
