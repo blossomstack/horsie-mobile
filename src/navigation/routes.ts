@@ -26,6 +26,7 @@ export type RootStackParamList = {
   Routines: undefined;
   RoutineDetail: { name: string };
 
+  SettingsAppearance: undefined;
   SettingsProjects: undefined;
   SettingsModels: undefined;
   SettingsRuntimes: undefined;
