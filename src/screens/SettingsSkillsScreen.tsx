@@ -1,9 +1,11 @@
+import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshControl, ScrollView, View } from "react-native";
 import { api } from "@/api/client";
 import { Body, Card, Empty, Loading, Pill, ReadError, Row } from "@/components/ui";
 import { Section } from "@/components/Detail";
 import { NamedRow } from "@/components/ReadOnlyList";
+import { usePullRefresh } from "@/hooks/usePullRefresh";
 import { useConnection } from "@/state/connection";
 import { space } from "@/theme";
 
@@ -35,6 +37,13 @@ export default function SkillsScreen() {
     enabled,
   });
 
+  const refreshAll = useCallback(
+    () =>
+      Promise.all([bundles.refetch(), marketplaces.refetch(), authored.refetch()]),
+    [bundles, marketplaces, authored],
+  );
+  const pull = usePullRefresh(refreshAll);
+
   if (bundles.isLoading) return <Loading />;
   if (bundles.isError) {
     return <ReadError error={bundles.error} onRetry={() => void bundles.refetch()} />;
@@ -50,14 +59,7 @@ export default function SkillsScreen() {
       <ScrollView
         contentContainerStyle={{ padding: space.lg, gap: space.lg }}
         refreshControl={
-          <RefreshControl
-            refreshing={bundles.isRefetching}
-            onRefresh={() => {
-              void bundles.refetch();
-              void marketplaces.refetch();
-              void authored.refetch();
-            }}
-          />
+          <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} />
         }
       >
         {nothing ? (

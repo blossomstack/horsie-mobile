@@ -4,6 +4,7 @@ import { useNavigation } from "@react-navigation/native";
 import { CircleHelp, MessageSquare } from "lucide-react-native";
 import type { InboxScope } from "@/api/client";
 import { useInbox } from "@/hooks/useInbox";
+import { usePullRefresh } from "@/hooks/usePullRefresh";
 import { Body, Card, Empty, Loading, Pill, ReadError, Row } from "@/components/ui";
 import { InboxState, type InboxMessageView } from "@/api/types";
 import { radii, space, useColors } from "@/theme";
@@ -22,7 +23,8 @@ const SCOPES: { key: InboxScope; label: string }[] = [
 
 export default function InboxScreen() {
   const [scope, setScope] = useState<InboxScope>("open");
-  const { data, isLoading, isError, error, refetch, isRefetching } = useInbox(scope);
+  const { data, isLoading, isError, error, refetch, isPlaceholderData } = useInbox(scope);
+  const pull = usePullRefresh(refetch);
 
   return (
     <View style={{ flex: 1 }}>
@@ -34,10 +36,14 @@ export default function InboxScreen() {
       ) : (
         <FlatList
           contentContainerStyle={{ padding: space.lg, paddingTop: 0 }}
+          // Rows still being carried over from the scope tapped away from.
+          // Dimmed rather than replaced with a spinner: the shape of the list
+          // is worth keeping, and its contents are not the answer yet.
+          style={{ opacity: isPlaceholderData ? 0.5 : 1 }}
           data={data?.messages ?? []}
           keyExtractor={(m) => m.id}
           refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} />
+            <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} />
           }
           ListEmptyComponent={
             <Empty

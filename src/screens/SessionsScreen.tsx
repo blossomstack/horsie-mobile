@@ -4,6 +4,7 @@ import { useNavigation } from "@react-navigation/native";
 import { CornerDownRight, Plus } from "lucide-react-native";
 import { SessionStatusKind } from "@/api/types";
 import { Body, Card, Empty, Loading, Pill, ReadError, Row } from "@/components/ui";
+import { usePullRefresh } from "@/hooks/usePullRefresh";
 import { useSessionFeed, useSessions } from "@/hooks/useSessions";
 import { flattenSessions, type SessionRow } from "@/lib/sessionTree";
 import { relativeTime } from "@/lib/time";
@@ -17,7 +18,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function SessionsScreen() {
   const navigation = useNavigation<Nav>();
   const c = useColors();
-  const { data, isLoading, isError, error, refetch, isRefetching } = useSessions();
+  const { data, isLoading, isError, error, refetch } = useSessions();
+  const pull = usePullRefresh(refetch);
   useSessionFeed();
 
   const rows = useMemo(() => flattenSessions(data?.sessions ?? []), [data]);
@@ -32,7 +34,7 @@ export default function SessionsScreen() {
         data={rows}
         keyExtractor={(r) => r.key}
         refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} />
+          <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} />
         }
         ListEmptyComponent={
           <Empty title="No sessions" detail="Start one with the button below." />

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { FlatList, RefreshControl, View } from "react-native";
 import { Body, Card, Empty, Loading, ReadError, Row } from "@/components/ui";
+import { usePullRefresh } from "@/hooks/usePullRefresh";
 import { space } from "@/theme";
 
 interface Query<T> {
@@ -9,7 +10,6 @@ interface Query<T> {
   isError: boolean;
   error: unknown;
   refetch: () => unknown;
-  isRefetching: boolean;
 }
 
 /**
@@ -37,6 +37,8 @@ export function ReadOnlyList<T>({
    * goes nowhere is worse than a row that plainly does not respond. */
   onOpen?: (item: T) => void;
 }) {
+  const pull = usePullRefresh(query.refetch);
+
   if (query.isLoading) return <Loading />;
   if (query.isError) {
     return <ReadError error={query.error} onRetry={() => void query.refetch()} />;
@@ -48,10 +50,7 @@ export function ReadOnlyList<T>({
       data={query.data ?? []}
       keyExtractor={keyOf}
       refreshControl={
-        <RefreshControl
-          refreshing={query.isRefetching}
-          onRefresh={() => void query.refetch()}
-        />
+        <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} />
       }
       ListEmptyComponent={<Empty title={empty.title} detail={empty.detail} />}
       renderItem={({ item, index }) => (
