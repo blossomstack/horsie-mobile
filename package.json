@@ -11,7 +11,7 @@
     "@tanstack/react-query": "^5.102.8",
     "lucide-react-native": "^1.37.0",
     "react": "19.2.8",
-    "react-dom": "19.2.3",
+    "react-dom": "19.2.8",
     "react-native": "0.86.3",
     "react-native-gesture-handler": "~3.2.1",
     "react-native-image-picker": "^8.2.1",
